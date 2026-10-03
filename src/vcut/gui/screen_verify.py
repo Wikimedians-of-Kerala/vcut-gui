@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl, Signal
-from PySide6.QtGui import QBrush, QColor
+from PySide6.QtGui import QBrush
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 from ..models import Clip, ClipStatus, TimecodeError, format_timecode, parse_timecode
 from ..naming import output_path, unique_path
 from .state import AppState
-from .widgets import StatusLabel
+from .widgets import StatusLabel, row_colour
 from .workers import CutJob, CutWorker, start
 
 COLUMNS = ("", "Programme", "Start", "End", "Length", "Code", "Checked", "Status")
@@ -155,6 +155,26 @@ class VerifyScreen(QWidget):
             header.setSectionResizeMode(column, QHeaderView.ResizeToContents)
         layout.addWidget(self.table, 1)
 
+        edits = QHBoxLayout()
+        for text, tip, slot in (
+            ("Add clip", "Add a new clip at the current playback position", self._add_clip),
+            ("Duplicate", "Copy the selected clip", self._duplicate_clip),
+            ("Remove", "Delete the selected clip from the list", self._remove_clip),
+        ):
+            button = QPushButton(text)
+            button.setAutoDefault(False)
+            button.setToolTip(tip)
+            button.clicked.connect(slot)
+            edits.addWidget(button)
+        edits.addStretch(1)
+
+        self.save_button = QPushButton("Save list…")
+        self.save_button.setAutoDefault(False)
+        self.save_button.setToolTip("Write the edited clip list back out as a CSV")
+        self.save_button.clicked.connect(self._save_list)
+        edits.addWidget(self.save_button)
+        layout.addLayout(edits)
+
         marks = QHBoxLayout()
         verified = QPushButton("Mark checked")
         verified.setAutoDefault(False)
@@ -272,13 +292,15 @@ class VerifyScreen(QWidget):
     def _colour_row(self, row: int, clip: Clip) -> None:
         problems = clip.validate(self.state.source_duration or None)
         if clip.status is ClipStatus.FAILED or problems:
-            brush = QBrush(QColor(255, 235, 235))
+            kind = "error"
         elif clip.status is ClipStatus.DONE:
-            brush = QBrush(QColor(232, 245, 233))
+            kind = "good"
         elif row in self._verified:
-            brush = QBrush(QColor(240, 247, 255))
+            kind = "info"
         else:
-            brush = QBrush(Qt.NoBrush)
+            kind = "none"
+        colour = row_colour(kind)
+        brush = QBrush(colour) if colour else QBrush(Qt.NoBrush)
         for column in range(len(COLUMNS)):
             item = self.table.item(row, column)
             if item:
@@ -453,6 +475,116 @@ class VerifyScreen(QWidget):
         self._refresh_summary()
         if row + 1 < self.table.rowCount():
             self.table.setCurrentCell(row + 1, COL_NAME)
+
+    # -- adding and removing rows -----------------------------------------
+
+    def _reindex_verified(self, inserted_at: int | None = None,
+                          removed_at: int | None = None) -> None:
+        """Keep the 'checked' marks attached to their rows after a change."""
+        updated = set()
+        for row in self._verified:
+            if inserted_at is not None and row >= inserted_at:
+                updated.add(row + 1)
+            elif removed_at is not None:
+                if row == removed_at:
+                    continue
+                updated.add(row - 1 if row > removed_at else row)
+            else:
+                updated.add(row)
+        self._verified = updated
+
+    def _add_clip(self) -> None:
+        """Insert a clip starting at the current playback position.
+
+        Sessions missing from the CSV are common — an unscheduled lightning
+        talk, a performance — so a new row starts from where the user is
+        already looking in the video.
+        """
+        position = self.player.position() / 1000
+        duration = self.state.source_duration or (self.player.duration() / 1000)
+        start = max(0.0, position)
+        # A ten-minute default is a sensible session length to trim down from,
+        # but never run past the end of the recording.
+        end = start + 600
+        if duration:
+            end = min(end, duration)
+        if end <= start:
+            end = min(start + 60, duration) if duration else start + 60
+
+        clip = Clip(
+            programme="New clip",
+            start_time=format_timecode(start),
+            end_time=format_timecode(end),
+        )
+        row = self.table.currentRow()
+        insert_at = row + 1 if row >= 0 else len(self.state.clips)
+        self.state.clips.insert(insert_at, clip)
+        self._reindex_verified(inserted_at=insert_at)
+
+        self.reload()
+        self.table.setCurrentCell(insert_at, COL_NAME)
+        self.table.editItem(self.table.item(insert_at, COL_NAME))
+        self.row_status.show_message(
+            "Added a clip starting at the player position — set its end time "
+            "and give it a title.",
+            "info",
+        )
+
+    def _duplicate_clip(self) -> None:
+        row, clip = self._current_clip()
+        if clip is None:
+            return
+        import copy
+
+        duplicate = copy.deepcopy(clip)
+        duplicate.status = ClipStatus.PENDING
+        duplicate.progress = 0.0
+        duplicate.message = ""
+        duplicate.output_path = ""
+        duplicate.programme = f"{clip.programme} (copy)"
+
+        self.state.clips.insert(row + 1, duplicate)
+        self._reindex_verified(inserted_at=row + 1)
+        self.reload()
+        self.table.setCurrentCell(row + 1, COL_NAME)
+
+    def _remove_clip(self) -> None:
+        row, clip = self._current_clip()
+        if clip is None:
+            return
+        answer = QMessageBox.question(
+            self, "Remove this clip",
+            f"Remove {clip.programme or 'this clip'} from the list?\n\n"
+            f"Any file already written for it is left alone.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+
+        del self.state.clips[row]
+        self._reindex_verified(removed_at=row)
+        self.reload()
+        if self.table.rowCount():
+            self.table.setCurrentCell(min(row, self.table.rowCount() - 1), COL_NAME)
+
+    def _save_list(self) -> None:
+        """Write the edited list back out, so the changes outlive the session."""
+        from PySide6.QtWidgets import QFileDialog
+
+        from ..csvio import write_clips
+
+        suggested = self.state.csv_path or "clips.csv"
+        target, _ = QFileDialog.getSaveFileName(
+            self, "Save the clip list", suggested, "CSV files (*.csv);;All files (*)"
+        )
+        if not target:
+            return
+        try:
+            write_clips(target, self.state.clips)
+        except OSError as exc:
+            QMessageBox.critical(self, "Could not save", str(exc))
+            return
+        self.row_status.show_message(f"Saved {target}.", "good")
 
     # -- cutting -----------------------------------------------------------
 

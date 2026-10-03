@@ -5,10 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QBrush, QColor, QDesktopServices
+from PySide6.QtGui import QBrush, QDesktopServices
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QHeaderView,
     QCheckBox,
     QHBoxLayout,
     QLineEdit,
@@ -24,7 +25,7 @@ from PySide6.QtWidgets import (
 from ..manifest import build_entry, write_manifest
 from ..upload import check_login, commons_url, validate_for_upload
 from .state import AppState
-from .widgets import StatusLabel, human_size
+from .widgets import StatusLabel, human_size, row_colour
 from .workers import UploadWorker, start
 
 COLUMNS = ("", "File", "Commons name", "Size", "Status")
@@ -65,7 +66,14 @@ class UploadScreen(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.itemChanged.connect(self._item_changed)
         self.table.cellDoubleClicked.connect(self._open_on_commons)
-        self.table.horizontalHeader().setStretchLastSection(True)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(COL_SELECT, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(COL_FILE, QHeaderView.Interactive)
+        header.setSectionResizeMode(COL_NAME, QHeaderView.Stretch)
+        header.setSectionResizeMode(COL_SIZE, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(COL_STATUS, QHeaderView.Interactive)
+        header.resizeSection(COL_FILE, 230)
+        header.resizeSection(COL_STATUS, 200)
         layout.addWidget(self.table, 1)
 
         self.comment_field = QLineEdit(
@@ -164,12 +172,9 @@ class UploadScreen(QWidget):
         self._refresh_summary()
 
     def _colour_row(self, row: int, blocked: bool, uploaded: bool = False) -> None:
-        if uploaded:
-            brush = QBrush(QColor(232, 245, 233))
-        elif blocked:
-            brush = QBrush(QColor(255, 235, 235))
-        else:
-            brush = QBrush(Qt.NoBrush)
+        kind = "good" if uploaded else ("error" if blocked else "none")
+        colour = row_colour(kind)
+        brush = QBrush(colour) if colour else QBrush(Qt.NoBrush)
         for column in range(len(COLUMNS)):
             item = self.table.item(row, column)
             if item:

@@ -113,6 +113,43 @@ class StatusLabel(QLabel):
         self.set_level(level)
 
 
+def is_dark_theme() -> bool:
+    """Whether the palette the user is running is a dark one."""
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        return False
+    window = app.palette().window().color()
+    # Perceived brightness; below the midpoint reads as a dark theme.
+    brightness = (window.red() * 299 + window.green() * 587 + window.blue() * 114) / 1000
+    return brightness < 128
+
+
+def row_colour(kind: str):
+    """A row background that stays legible in both light and dark themes.
+
+    Returns ``None`` for "no tint", which leaves the row with the normal
+    alternating colours.
+    """
+    from PySide6.QtGui import QColor
+
+    if kind == "none":
+        return None
+    dark = is_dark_theme()
+    palette = {
+        # kind: (light, dark)
+        "error": ("#ffe8e8", "#4a2222"),
+        "good": ("#e8f5e9", "#1f3a24"),
+        "warn": ("#fff6e0", "#43381c"),
+        "info": ("#eaf2ff", "#1e2d44"),
+    }
+    pair = palette.get(kind)
+    if not pair:
+        return None
+    return QColor(pair[1] if dark else pair[0])
+
+
 def human_size(num_bytes: float) -> str:
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if abs(num_bytes) < 1024:

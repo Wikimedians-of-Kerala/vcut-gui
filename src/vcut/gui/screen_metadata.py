@@ -5,9 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QFont
+from PySide6.QtGui import QBrush, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QHeaderView,
     QComboBox,
     QFormLayout,
     QGroupBox,
@@ -28,7 +29,7 @@ from ..commons import prepare_file, write_sidecar
 from ..ffmpeg import OutputFormat
 from ..naming import output_path, unique_path
 from .state import AppState
-from .widgets import StatusLabel
+from .widgets import StatusLabel, row_colour
 from .workers import ConvertJob, ConvertWorker, start
 
 COLUMNS = ("", "Clip", "File", "Commons name", "Metadata", "Notes")
@@ -108,7 +109,22 @@ class MetadataScreen(QWidget):
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.currentCellChanged.connect(self._row_changed)
         self.table.itemChanged.connect(self._item_changed)
-        self.table.horizontalHeader().setStretchLastSection(True)
+
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(COL_SELECT, QHeaderView.ResizeToContents)
+        # The clip title identifies the row, so it gets the slack and a floor
+        # that the other columns cannot squeeze away.
+        header.setSectionResizeMode(COL_CLIP, QHeaderView.Stretch)
+        header.setSectionResizeMode(COL_FILE, QHeaderView.Interactive)
+        header.setSectionResizeMode(COL_NAME, QHeaderView.Interactive)
+        header.setSectionResizeMode(COL_META, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(COL_NOTES, QHeaderView.Interactive)
+        header.setMinimumSectionSize(60)
+        self.table.setColumnWidth(COL_CLIP, 200)
+        header.resizeSection(COL_FILE, 140)
+        header.resizeSection(COL_NAME, 170)
+        header.resizeSection(COL_NOTES, 160)
+        self.table.setTextElideMode(Qt.ElideRight)
         layout.addWidget(self.table, 1)
 
         buttons = QHBoxLayout()
@@ -265,12 +281,9 @@ class MetadataScreen(QWidget):
         serious = any(
             "DO NOT RECORD" in w or "MP4 cannot" in w for w in prepared.warnings
         )
-        if serious:
-            brush = QBrush(QColor(255, 235, 235))
-        elif session:
-            brush = QBrush(QColor(232, 245, 233))
-        else:
-            brush = QBrush(QColor(255, 249, 230))
+        kind = "error" if serious else ("good" if session else "warn")
+        colour = row_colour(kind)
+        brush = QBrush(colour) if colour else QBrush(Qt.NoBrush)
         for column in range(len(COLUMNS)):
             item = self.table.item(row, column)
             if item:

@@ -52,14 +52,16 @@ def test_a_do_not_record_session_is_blocked(tmp_path):
     assert any("do-not-record" in p for p in validate_for_upload(prepared))
 
 
-def test_an_oversized_file_is_reported(tmp_path, monkeypatch):
-    prepared = make(tmp_path)
-
-    class FakeStat:
-        st_size = MAX_UPLOAD_BYTES + 1
-
-    monkeypatch.setattr("pathlib.Path.stat", lambda self: FakeStat())
-    assert any("4 GiB" in p for p in validate_for_upload(prepared))
+def test_an_oversized_file_is_reported(tmp_path):
+    # A sparse file reports its full size without occupying the disk.
+    path = tmp_path / "huge.webm"
+    with path.open("wb") as handle:
+        handle.truncate(MAX_UPLOAD_BYTES + 1)
+    prepared = CommonsFile(
+        clip=Clip(programme="Talk"), local_path=str(path),
+        filename="huge.webm", wikitext="{{Information}}",
+    )
+    assert any("4 GiB" in problem for problem in validate_for_upload(prepared))
 
 
 def test_a_dry_run_reports_without_uploading(tmp_path):
