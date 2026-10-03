@@ -63,9 +63,15 @@ class VerifyScreen(QWidget):
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(self._player_panel())
         splitter.addWidget(self._table_panel())
-        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(0, 5)
         splitter.setStretchFactor(1, 4)
+        splitter.setSizes([640, 520])
         layout.addWidget(splitter, 1)
+
+        # The transport spans the whole window rather than sitting under the
+        # video: a full-width timeline makes the clip blocks far easier to
+        # read against the length of the recording.
+        layout.addWidget(self._transport_panel())
         layout.addWidget(self._action_bar())
 
     def _player_panel(self) -> QWidget:
@@ -74,7 +80,11 @@ class VerifyScreen(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.video = QVideoWidget()
-        self.video.setMinimumSize(320, 200)
+        self.video.setMinimumSize(320, 180)
+        # Black behind the frame, so an unfilled pane reads as "no picture
+        # yet" rather than as a gap in the window.
+        self.video.setStyleSheet("background: #000;")
+        self.video.setAspectRatioMode(Qt.KeepAspectRatio)
         self.player = QMediaPlayer(self)
         self.audio = QAudioOutput(self)
         self.player.setAudioOutput(self.audio)
@@ -83,6 +93,14 @@ class VerifyScreen(QWidget):
         self.player.durationChanged.connect(self._duration_changed)
         self.player.errorOccurred.connect(self._player_error)
         layout.addWidget(self.video, 1)
+        return panel
+
+    def _transport_panel(self) -> QWidget:
+        """The timeline and transport, full width under both panes."""
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 4, 0, 0)
+        layout.setSpacing(6)
 
         self.bar = PlayerBar()
         self.bar.play_toggled.connect(self._toggle_play)
@@ -95,7 +113,7 @@ class VerifyScreen(QWidget):
         layout.addWidget(self.bar)
 
         grabs = QHBoxLayout()
-        grabs.setContentsMargins(0, 2, 0, 0)
+        grabs.setContentsMargins(0, 0, 0, 0)
         set_start = QPushButton("Set start from player")
         set_start.setAutoDefault(False)
         set_start.setToolTip("Use the current playback position as this clip's start")
@@ -110,6 +128,7 @@ class VerifyScreen(QWidget):
         set_end.clicked.connect(lambda: self._set_from_player(COL_END))
         grabs.addWidget(set_start)
         grabs.addWidget(set_end)
+        grabs.addStretch(1)
         layout.addLayout(grabs)
         return panel
 
@@ -189,6 +208,23 @@ class VerifyScreen(QWidget):
         select_none.clicked.connect(lambda: self._set_all_selected(False))
         marks.addWidget(select_none)
         marks.addStretch(1)
+
+        # The transport bar has these too, but the useful moment for them is
+        # right after picking a row, so they belong beside the list as well.
+        for text, tip, role, slot in (
+            ("Go to start", "Jump the player to this clip's start time",
+             "go-start", self._goto_start),
+            ("Go to end", "Jump the player to this clip's end time",
+             "go-end", self._goto_end),
+        ):
+            button = QPushButton(text)
+            button.setAutoDefault(False)
+            button.setToolTip(tip)
+            icons.apply(button, role)
+            button.setProperty("iconRole", role)
+            button.clicked.connect(slot)
+            marks.addWidget(button)
+
         layout.addLayout(marks)
 
         self.row_status = StatusLabel("")
@@ -250,9 +286,12 @@ class VerifyScreen(QWidget):
         for row, clip in enumerate(self.state.clips):
             self._fill_row(row, clip)
         self._updating = False
+        self._refresh_blocks()
         self._refresh_summary()
         if self.state.clips and self.table.currentRow() < 0:
             self.table.setCurrentCell(0, COL_NAME)
+        elif not self.state.clips:
+            self._highlight_span(None)
 
     def _fill_row(self, row: int, clip: Clip) -> None:
         select = QTableWidgetItem()
@@ -356,6 +395,9 @@ class VerifyScreen(QWidget):
         self.table.item(row, COL_STATUS).setText(self._status_text(clip))
         self._colour_row(row, clip)
         self._updating = False
+        if row == self.table.currentRow():
+            self._highlight_span(clip)
+        self._refresh_blocks()
         self._refresh_summary()
 
     def _set_all_selected(self, selected: bool) -> None:
@@ -379,13 +421,36 @@ class VerifyScreen(QWidget):
     def _row_changed(self, row: int, _column: int, _prev_row: int, _prev: int) -> None:
         _, clip = self._current_clip()
         if clip is None:
+            self._highlight_span(None)
             return
         problems = clip.validate(self.state.source_duration or None)
         if problems:
             self.row_status.show_message("; ".join(problems), "error")
         else:
             self.row_status.show_message("")
+        self._highlight_span(clip)
         self._goto_start()
+
+    def _refresh_blocks(self) -> None:
+        """Redraw the markers for every clip in the list."""
+        spans = []
+        for clip in self.state.clips:
+            try:
+                spans.append((clip.start_seconds, clip.end_seconds))
+            except TimecodeError:
+                continue  # a row still being typed has nothing to mark
+        self.bar.set_clip_blocks(spans)
+
+    def _highlight_span(self, clip: Clip | None) -> None:
+        """Show the clip's extent on the scrubber."""
+        if clip is None:
+            self.bar.set_clip_span(None, None)
+            return
+        try:
+            self.bar.set_clip_span(clip.start_seconds, clip.end_seconds)
+        except TimecodeError:
+            # A half-typed timecode just means nothing to highlight yet.
+            self.bar.set_clip_span(None, None)
 
     def _toggle_play(self) -> None:
         if self.player.playbackState() == QMediaPlayer.PlayingState:
@@ -456,6 +521,8 @@ class VerifyScreen(QWidget):
         self.table.item(row, COL_STATUS).setText(self._status_text(clip))
         self._colour_row(row, clip)
         self._updating = False
+        self._highlight_span(clip)
+        self._refresh_blocks()
         self._refresh_summary()
 
     def _position_changed(self, position_ms: int) -> None:

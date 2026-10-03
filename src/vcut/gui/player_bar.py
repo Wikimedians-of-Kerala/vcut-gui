@@ -8,7 +8,8 @@ one control surface.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QRect, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -23,6 +24,115 @@ from PySide6.QtWidgets import (
 
 from . import icons
 from .widgets import is_dark_theme
+
+
+class ClipScrubber(QSlider):
+    """A scrubber that shows where the selected clip sits in the recording.
+
+    The span is drawn over the groove, with its edges marked, so the clip's
+    extent is visible at a glance while scrubbing around it.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(Qt.Horizontal, parent)
+        self._span: tuple[int, int] | None = None   # the selected clip
+        self._blocks: list[tuple[int, int]] = []    # every clip in the list
+        self._band = QColor("#f57c1f")
+        self._edge = QColor("#ff9640")
+        self._block = QColor("#2d5b9e")
+
+    def set_span(self, start_ms: int | None, end_ms: int | None) -> None:
+        """Mark a clip's extent, or pass ``None`` to clear it."""
+        if start_ms is None or end_ms is None or end_ms <= start_ms:
+            self._span = None
+        else:
+            self._span = (int(start_ms), int(end_ms))
+        self.update()
+
+    def set_blocks(self, spans: list[tuple[float, float]]) -> None:
+        """Mark every clip in the list, so the day's layout is visible.
+
+        Gaps between the blocks are the parts of the recording no clip
+        covers — usually breaks, but sometimes a session that was missed.
+        """
+        self._blocks = [
+            (int(start * 1000), int(end * 1000))
+            for start, end in spans
+            if end > start
+        ]
+        self.update()
+
+    def set_colours(self, band: str, edge: str, block: str = "") -> None:
+        self._band = QColor(band)
+        self._edge = QColor(edge)
+        if block:
+            self._block = QColor(block)
+        self.update()
+
+    def _groove_rect(self) -> QRect:
+        """Where the groove is drawn, matching the stylesheet's 6px height."""
+        height = 6
+        top = (self.height() - height) // 2
+        # The handle is centred on its value, so the usable track is inset by
+        # half a handle at each end.
+        inset = 9
+        return QRect(inset, top, max(1, self.width() - inset * 2), height)
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        # Everything is drawn *under* the slider so the handle stays on top.
+        # The band is taller than the groove and in a contrasting colour —
+        # painted in the groove's own blue it vanishes into the played portion.
+        if self.maximum() > 0:
+            if self._blocks:
+                self._paint_blocks()
+            if self._span:
+                self._paint_band()
+        super().paintEvent(event)
+
+    def _x_for(self, milliseconds: int, track: QRect) -> int:
+        return track.left() + int(milliseconds * track.width() / self.maximum())
+
+    def _paint_blocks(self) -> None:
+        """Every clip from the list, behind the selected one."""
+        track = self._groove_rect()
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(self._block)
+        # A taller lane than the groove, so a block is never swallowed by the
+        # played-portion fill behind it.
+        top = track.top() - 6
+        height = track.height() + 12
+        for start, end in self._blocks:
+            left = self._x_for(start, track)
+            right = self._x_for(end, track)
+            painter.drawRect(QRect(left, top, max(2, right - left), height))
+        painter.end()
+
+    def _paint_band(self) -> None:
+        start, end = self._span
+        track = self._groove_rect()
+        left = self._x_for(start, track)
+        right = self._x_for(end, track)
+        if right - left < 3:
+            right = left + 3
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # A band that overhangs the groove top and bottom.
+        top = track.top() - 6
+        height = track.height() + 12
+        band = QColor(self._band)
+        band.setAlpha(170)
+        painter.fillRect(QRect(left, top, right - left, height), band)
+
+        # Solid posts at each edge mark the exact in and out points.
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(self._edge)
+        for x in (left, right):
+            painter.drawRect(QRect(x - 1, top, 3, height))
+        painter.end()
 
 
 class RoundButton(QPushButton):
@@ -147,7 +257,7 @@ class PlayerBar(QFrame):
         self.position_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         scrub_row.addWidget(self.position_label)
 
-        self.scrubber = QSlider(Qt.Horizontal)
+        self.scrubber = ClipScrubber()
         self.scrubber.setObjectName("playerScrubber")
         self.scrubber.setRange(0, 0)
         self.scrubber.sliderMoved.connect(self.scrubbed)
@@ -317,6 +427,13 @@ class PlayerBar(QFrame):
             QLineEdit#playerJump:focus {{ border: 1px solid {filled}; }}
             """
         )
+        # Orange against the blue groove, so the clip's extent is unmistakable;
+        # the other clips sit behind it in a darker blue.
+        self.scrubber.set_colours(
+            "#f57c1f" if dark else "#e06c00",
+            "#ff9640" if dark else "#c25500",
+            "#2d5b9e" if dark else "#7d9cc4",
+        )
         for button in self.findChildren(RoundButton):
             button._restyle()
 
@@ -329,6 +446,18 @@ class PlayerBar(QFrame):
         if not self.scrubber.isSliderDown():
             self.scrubber.setValue(milliseconds)
         self.position_label.setText(_format(milliseconds))
+
+    def set_clip_span(self, start_seconds: float | None,
+                      end_seconds: float | None) -> None:
+        """Highlight the selected clip's extent on the scrubber."""
+        if start_seconds is None or end_seconds is None:
+            self.scrubber.set_span(None, None)
+            return
+        self.scrubber.set_span(int(start_seconds * 1000), int(end_seconds * 1000))
+
+    def set_clip_blocks(self, spans: list[tuple[float, float]]) -> None:
+        """Mark every clip from the timecode list on the scrubber."""
+        self.scrubber.set_blocks(spans)
 
     def set_duration(self, milliseconds: int) -> None:
         self.scrubber.setRange(0, max(0, milliseconds))

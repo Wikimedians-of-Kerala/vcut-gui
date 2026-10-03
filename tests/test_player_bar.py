@@ -104,3 +104,66 @@ def test_the_bar_restyles_for_each_theme(bar):
     apply_theme(Theme.DARK)
     bar.restyle()
     assert bar.styleSheet() != light
+
+
+# -- the clip timeline -----------------------------------------------------
+
+
+def test_no_span_is_marked_to_begin_with(bar):
+    assert bar.scrubber._span is None
+
+
+def test_a_clip_span_is_recorded_in_milliseconds(bar):
+    bar.set_clip_span(40, 60)
+    assert bar.scrubber._span == (40_000, 60_000)
+
+
+def test_clearing_the_span(bar):
+    bar.set_clip_span(40, 60)
+    bar.set_clip_span(None, None)
+    assert bar.scrubber._span is None
+
+
+def test_a_backwards_span_is_not_marked(bar):
+    # A half-edited clip can momentarily end before it starts.
+    bar.set_clip_span(60, 40)
+    assert bar.scrubber._span is None
+
+
+def test_every_clip_is_marked_as_a_block(bar):
+    bar.set_clip_blocks([(5, 25), (40, 60), (80, 95)])
+    assert bar.scrubber._blocks == [(5000, 25_000), (40_000, 60_000), (80_000, 95_000)]
+
+
+def test_blocks_with_no_length_are_dropped(bar):
+    bar.set_clip_blocks([(5, 25), (30, 30), (60, 50)])
+    assert bar.scrubber._blocks == [(5000, 25_000)]
+
+
+def test_blocks_and_the_selected_span_coexist(bar):
+    # The selected clip is drawn over the others, not instead of them.
+    bar.set_clip_blocks([(5, 25), (40, 60)])
+    bar.set_clip_span(40, 60)
+    assert len(bar.scrubber._blocks) == 2
+    assert bar.scrubber._span == (40_000, 60_000)
+
+
+def test_the_block_colour_differs_from_the_selected_band(bar):
+    assert bar.scrubber._block.name() != bar.scrubber._band.name()
+
+
+def test_the_selected_band_is_orange(bar):
+    # Orange against the blue groove is what makes the selection stand out.
+    colour = bar.scrubber._band
+    assert colour.red() > 200
+    assert colour.red() > colour.blue() * 2
+
+
+def test_painting_a_marked_scrubber_does_not_raise(bar, qt_app):
+    # The custom paint path runs only when there is something to draw.
+    bar.set_clip_blocks([(5, 25), (40, 60)])
+    bar.set_clip_span(40, 60)
+    bar.resize(600, 110)
+    bar.show()
+    qt_app.processEvents()
+    assert not bar.grab().isNull()

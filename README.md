@@ -12,15 +12,21 @@ Built for Wikimedia conference video teams. Runs on Windows and Linux.
 conference schedule, and choose how to encode. The video is probed as soon as
 it is chosen, so its length and codecs are visible before anything else.
 
-**2. Verify and split** — the heart of it. A player sits beside the clip list:
-selecting a row seeks to that clip's start, *Preview* plays the first few
-seconds, and the transport bar steps a second or ten at a time. Any timecode
-can be typed into *Go to* to jump straight there. Times can be edited in the
-table or taken from the playhead with *Set start/end from player*. Clips can
-be added, duplicated and removed, so sessions missing from the CSV are no
-obstacle. Rows that cannot work — an end before its start, a time past the end
-of the recording — are flagged before any encoding begins. *Split the video*
-confirms what it is about to do, then shows progress per clip.
+**2. Verify and split** — the heart of it. A player sits beside the clip list,
+with a full-width timeline beneath them both. Every clip from the CSV is
+marked on that timeline in dark blue and the selected one in orange, so the
+shape of the day — and any gap where a session was missed — is visible at a
+glance.
+
+Selecting a row seeks to that clip's start; *Go to start* and *Go to end* sit
+beside the list and in the transport, *Preview* plays the opening seconds, and
+the transport steps a second or ten at a time. Any timecode can be typed into
+*Go to* to jump straight there. Times can be edited in the table or taken from
+the playhead with *Set start/end from player*. Clips can be added, duplicated
+and removed, so sessions missing from the CSV are no obstacle. Rows that
+cannot work — an end before its start, a time past the end of the recording —
+are flagged before any encoding begins. *Split the video* confirms what it is
+about to do, then shows progress per clip.
 
 **3. Metadata** — each clip's details are looked up by talk code and the
 Commons wikitext is generated and shown for editing. This is also where MP4
