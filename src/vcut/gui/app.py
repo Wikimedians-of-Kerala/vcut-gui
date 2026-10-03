@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication
 
 from ..settings import AppSettings
 from .main_window import MainWindow
+from .resources import app_icon
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -17,6 +18,9 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("vcut")
     app.setApplicationDisplayName("vcut")
     app.setOrganizationName("vcut")
+    app.setWindowIcon(app_icon())
+    # Wayland takes the taskbar icon from the desktop file name, not the window.
+    app.setDesktopFileName("vcut-gui")
 
     window = MainWindow(AppSettings.load())
     window.show()

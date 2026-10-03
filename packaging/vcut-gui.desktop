@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=vcut
+GenericName=Conference video cutter
+Comment=Cut conference recordings into clips and prepare them for Wikimedia Commons
+Exec=vcut-gui
+Icon=vcut-gui
+Terminal=false
+Categories=AudioVideo;Video;AudioVideoEditing;
+Keywords=video;ffmpeg;wikimedia;commons;conference;

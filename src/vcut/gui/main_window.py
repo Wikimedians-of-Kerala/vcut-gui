@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..settings import AppSettings
+from .resources import app_icon, logo_pixmap
 from .screen_metadata import MetadataScreen
 from .screen_setup import SetupScreen
 from .screen_upload import UploadScreen
@@ -42,6 +43,14 @@ class StepBar(QWidget):
         layout.setContentsMargins(12, 8, 12, 8)
         layout.setSpacing(6)
 
+        logo = logo_pixmap(28)
+        if not logo.isNull():
+            badge = QLabel()
+            badge.setPixmap(logo)
+            badge.setToolTip("vcut")
+            layout.addWidget(badge)
+            layout.addSpacing(8)
+
         self.buttons: list[QPushButton] = []
         for title, tooltip in STEPS:
             button = QPushButton(title)
@@ -62,6 +71,7 @@ class MainWindow(QMainWindow):
     def __init__(self, settings: AppSettings | None = None) -> None:
         super().__init__()
         self.setWindowTitle("vcut — conference video cutter")
+        self.setWindowIcon(app_icon())
         self.resize(1180, 780)
 
         self.state = AppState(settings)
@@ -195,14 +205,20 @@ class MainWindow(QMainWindow):
     def _about(self) -> None:
         from .. import __version__
 
-        QMessageBox.about(
-            self, "About vcut",
+        box = QMessageBox(self)
+        box.setWindowTitle("About vcut")
+        box.setTextFormat(Qt.RichText)
+        box.setText(
             f"<b>vcut {__version__}</b><br><br>"
             "Cuts conference recordings into per-session clips, fetches each "
             "session's details from an Eventyay/pretalx schedule, and prepares "
             "them for Wikimedia Commons.<br><br>"
-            "Licensed under the GNU GPL v3 or later.",
+            "Licensed under the GNU GPL v3 or later."
         )
+        pixmap = logo_pixmap(96)
+        if not pixmap.isNull():
+            box.setIconPixmap(pixmap)
+        box.exec()
 
     def closeEvent(self, event) -> None:  # noqa: N802
         try:

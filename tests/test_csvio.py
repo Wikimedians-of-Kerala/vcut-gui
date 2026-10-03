@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from vcut.csvio import map_headers, parse_clips, read_clips, write_clips
@@ -75,3 +77,28 @@ def test_read_handles_utf8_bom(tmp_path):
     target = tmp_path / "bom.csv"
     target.write_text("﻿programme,start_time,end_time\nTalk,0:10,0:20\n", encoding="utf-8")
     assert read_clips(target)[0].programme == "Talk"
+
+
+# -- the shipped examples --------------------------------------------------
+
+EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
+
+
+def test_the_tab_separated_example_parses():
+    clips = read_clips(EXAMPLES / "sample-schedule.tsv")
+    assert len(clips) == 16
+    assert all(not clip.validate() for clip in clips)
+
+
+def test_the_example_covers_rows_with_and_without_a_talk_code():
+    clips = read_clips(EXAMPLES / "sample-schedule.tsv")
+    with_code = [c for c in clips if c.eventyay_id]
+    without = [c for c in clips if not c.eventyay_id]
+    # Both paths matter, so the example must exercise each.
+    assert with_code and without
+
+
+def test_the_minimal_example_parses():
+    clips = read_clips(EXAMPLES / "sample-minimal.csv")
+    assert len(clips) == 3
+    assert all(not clip.validate() for clip in clips)
