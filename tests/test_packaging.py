@@ -68,6 +68,21 @@ def test_uploading_is_an_optional_extra():
     assert any("pywikibot" in dep for dep in data["project"]["optional-dependencies"]["upload"])
 
 
+def test_the_sdist_excludes_build_environments():
+    # A virtual environment cannot go into an sdist: its absolute symlinks
+    # make the tar unusable, and the packaging scripts leave one behind.
+    data = tomllib.loads(read("pyproject.toml"))
+    sdist = data["tool"]["hatch"]["build"]["targets"]["sdist"]
+    assert ".venv-build" in sdist["exclude"]
+    assert ".venv" in sdist["exclude"]
+
+
+def test_build_environments_are_not_committed():
+    ignored = read(".gitignore").splitlines()
+    assert ".venv/" in ignored
+    assert ".venv-build/" in ignored
+
+
 def test_the_wheel_does_not_double_include_the_logo():
     # A force-include of package data adds the same file twice and the wheel
     # build then fails.

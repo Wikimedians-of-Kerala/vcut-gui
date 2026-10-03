@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.2 — 2026-10-03
 
 - The timeline zooms, with buttons, Ctrl+wheel, and *Zoom to clip*. At 1x a
   session in a nine-hour recording is a few pixels wide; zoomed in, cuts can

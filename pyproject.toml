@@ -1,6 +1,6 @@
 [project]
 name = "vcut-gui"
-version = "1.0.1"
+version = "1.0.2"
 description = "Cut conference recordings into per-session clips with Wikimedia Commons metadata"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -57,6 +57,11 @@ vcut-gui = "vcut.gui.app:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.sdist]
+# The packaging scripts leave a build venv behind; a virtual environment
+# cannot go into an sdist (its absolute symlinks make the tar unusable).
+exclude = [".venv", ".venv-build", "dist", "build", ".github"]
 
 [tool.hatch.build.targets.wheel]
 # The logo under src/vcut/gui/logo ships as package data automatically; a
