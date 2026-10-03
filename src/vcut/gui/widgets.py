@@ -44,6 +44,10 @@ class FilePicker(QWidget):
 
         browse = QPushButton("Browse…")
         browse.setAutoDefault(False)
+        from . import icons
+
+        icons.apply(browse, "folder")
+        browse.setProperty("iconRole", "folder")
         browse.clicked.connect(self._browse)
 
         layout = QHBoxLayout(self)
@@ -114,7 +118,11 @@ class StatusLabel(QLabel):
 
 
 def is_dark_theme() -> bool:
-    """Whether the palette the user is running is a dark one."""
+    """Whether the palette currently in force is a dark one.
+
+    Reads the application palette rather than the desktop's preference, so it
+    reflects an explicitly chosen theme as well as the system default.
+    """
     from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance()

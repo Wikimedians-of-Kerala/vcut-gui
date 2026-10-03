@@ -42,6 +42,7 @@ def _as_cut_mode(value) -> CutMode | None:
     except (ValueError, TypeError):
         return None
 from ..naming import COMMONS_SUBFOLDER, MP4_SUBFOLDER
+from . import icons
 from .state import AppState
 from .widgets import FilePicker, StatusLabel, human_duration, human_size
 from .workers import ProbeWorker, ScheduleWorker, start
@@ -74,8 +75,8 @@ class SetupScreen(QWidget):
         scroll.setFrameShape(QScrollArea.NoFrame)
         inner = QWidget()
         layout = QVBoxLayout(inner)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(14)
+        layout.setContentsMargins(16, 10, 16, 16)
+        layout.setSpacing(18)
 
         layout.addWidget(self._files_group())
         layout.addWidget(self._event_group())
@@ -121,6 +122,8 @@ class SetupScreen(QWidget):
 
         fetch = QPushButton("Fetch schedule")
         fetch.setAutoDefault(False)
+        icons.apply(fetch, "schedule")
+        fetch.setProperty("iconRole", "schedule")
         fetch.clicked.connect(lambda: self.fetch_schedule(force=True))
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
@@ -237,6 +240,13 @@ class SetupScreen(QWidget):
         self.encoder_status = StatusLabel("")
         form.addRow("", self.encoder_status)
         return group
+
+    def restyle(self) -> None:
+        """Rebuild button icons after a theme change."""
+        for button in self.findChildren(QPushButton):
+            role = button.property("iconRole")
+            if role:
+                icons.apply(button, role)
 
     # -- settings ----------------------------------------------------------
 

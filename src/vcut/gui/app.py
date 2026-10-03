@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication
 from ..settings import AppSettings
 from .main_window import MainWindow
 from .resources import app_icon
+from .theme import Theme, apply_theme
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -22,7 +23,13 @@ def main(argv: list[str] | None = None) -> int:
     # Wayland takes the taskbar icon from the desktop file name, not the window.
     app.setDesktopFileName("vcut-gui")
 
-    window = MainWindow(AppSettings.load())
+    settings = AppSettings.load()
+    try:
+        apply_theme(Theme(settings.theme))
+    except ValueError:
+        apply_theme(Theme.SYSTEM)
+
+    window = MainWindow(settings)
     window.show()
     return app.exec()
 

@@ -14,12 +14,13 @@ it is chosen, so its length and codecs are visible before anything else.
 
 **2. Verify and split** — the heart of it. A player sits beside the clip list:
 selecting a row seeks to that clip's start, *Preview* plays the first few
-seconds, and the nudge buttons step a second at a time. Timecodes can be typed
-in or taken from the player with *Set start/end from player*. Clips can be
-added, duplicated and removed, so sessions missing from the CSV are no
+seconds, and the transport bar steps a second or ten at a time. Any timecode
+can be typed into *Go to* to jump straight there. Times can be edited in the
+table or taken from the playhead with *Set start/end from player*. Clips can
+be added, duplicated and removed, so sessions missing from the CSV are no
 obstacle. Rows that cannot work — an end before its start, a time past the end
-of the recording — are flagged before any encoding begins. Then *Split the
-video*.
+of the recording — are flagged before any encoding begins. *Split the video*
+confirms what it is about to do, then shows progress per clip.
 
 **3. Metadata** — each clip's details are looked up by talk code and the
 Commons wikitext is generated and shown for editing. This is also where MP4
@@ -27,6 +28,14 @@ cuts are converted into an uploadable format.
 
 **4. Upload** — review what will be sent, upload with Pywikibot, or save the
 metadata into the folder and finish later.
+
+Both long jobs — splitting and converting — confirm the work first, showing
+the clip count, formats and an estimate, then run in a window that reports
+overall progress, the file in hand, elapsed time and the time remaining.
+Cancelling finishes the current clip rather than leaving a truncated file.
+
+The window follows the desktop's light or dark theme, and the choice can be
+forced under **View → Theme**.
 
 ## Requirements
 

@@ -93,6 +93,9 @@ class AppSettings:
     commons_template: str = ""        # empty means the built-in default template
     date_override: str = ""
 
+    # Appearance
+    theme: str = "system"          # "system", "light" or "dark"
+
     # Tools
     ffmpeg_path: str = ""
     ffprobe_path: str = ""

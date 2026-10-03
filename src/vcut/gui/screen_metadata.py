@@ -27,9 +27,12 @@ from PySide6.QtWidgets import (
 
 from ..commons import prepare_file, write_sidecar
 from ..ffmpeg import OutputFormat
+from ..models import format_timecode
 from ..naming import output_path, unique_path
+from . import icons
+from .progress_dialog import ConfirmJobDialog, JobProgressDialog, JobSummary
 from .state import AppState
-from .widgets import StatusLabel, row_colour
+from .widgets import StatusLabel, human_size, row_colour
 from .workers import ConvertJob, ConvertWorker, start
 
 COLUMNS = ("", "Clip", "File", "Commons name", "Metadata", "Notes")
@@ -47,6 +50,7 @@ class MetadataScreen(QWidget):
         self._prepared: dict[int, object] = {}
         self._edited: dict[int, str] = {}
         self._worker: ConvertWorker | None = None
+        self._dialog: JobProgressDialog | None = None
         self._updating = False
 
         self._build()
@@ -119,22 +123,23 @@ class MetadataScreen(QWidget):
         header.setSectionResizeMode(COL_NAME, QHeaderView.Interactive)
         header.setSectionResizeMode(COL_META, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(COL_NOTES, QHeaderView.Interactive)
-        header.setMinimumSectionSize(60)
-        self.table.setColumnWidth(COL_CLIP, 200)
-        header.resizeSection(COL_FILE, 140)
-        header.resizeSection(COL_NAME, 170)
-        header.resizeSection(COL_NOTES, 160)
+        header.setMinimumSectionSize(150)
+        header.resizeSection(COL_FILE, 150)
+        header.resizeSection(COL_NAME, 190)
+        header.resizeSection(COL_NOTES, 170)
         self.table.setTextElideMode(Qt.ElideRight)
         layout.addWidget(self.table, 1)
 
         buttons = QHBoxLayout()
-        for text, slot in (
-            ("Fetch metadata", self._fetch_metadata),
-            ("Select all", lambda: self._set_all(True)),
-            ("Select none", lambda: self._set_all(False)),
+        for text, role, slot in (
+            ("Fetch metadata", "refresh", self._fetch_metadata),
+            ("Select all", "select-all", lambda: self._set_all(True)),
+            ("Select none", "select-none", lambda: self._set_all(False)),
         ):
             button = QPushButton(text)
             button.setAutoDefault(False)
+            icons.apply(button, role)
+            button.setProperty("iconRole", role)
             button.clicked.connect(slot)
             buttons.addWidget(button)
         buttons.addStretch(1)
@@ -167,6 +172,8 @@ class MetadataScreen(QWidget):
         buttons = QHBoxLayout()
         revert = QPushButton("Revert to generated")
         revert.setAutoDefault(False)
+        icons.apply(revert, "revert")
+        revert.setProperty("iconRole", "revert")
         revert.clicked.connect(self._revert)
         buttons.addWidget(revert)
         buttons.addStretch(1)
@@ -191,6 +198,8 @@ class MetadataScreen(QWidget):
         self.convert_button.setToolTip(
             "Transcode the cut clips into an uploadable format"
         )
+        icons.apply(self.convert_button, "convert")
+        self.convert_button.setProperty("iconRole", "convert")
         self.convert_button.clicked.connect(self._convert)
         layout.addWidget(self.convert_button)
 
@@ -199,6 +208,8 @@ class MetadataScreen(QWidget):
         self.sidecar_button.setToolTip(
             "Save each description as a .txt file beside its video"
         )
+        icons.apply(self.sidecar_button, "description")
+        self.sidecar_button.setProperty("iconRole", "description")
         self.sidecar_button.clicked.connect(self._write_sidecars)
         layout.addWidget(self.sidecar_button)
 
@@ -212,12 +223,22 @@ class MetadataScreen(QWidget):
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setAutoDefault(False)
         self.cancel_button.setVisible(False)
+        icons.apply(self.cancel_button, "cancel")
+        self.cancel_button.setProperty("iconRole", "cancel")
         self.cancel_button.clicked.connect(self._cancel)
         layout.addWidget(self.cancel_button)
 
         self.summary = StatusLabel("")
         layout.addWidget(self.summary)
         return bar
+
+    def restyle(self) -> None:
+        """Rebuild row colours and button icons after a theme change."""
+        for button in self.findChildren(QPushButton):
+            role = button.property("iconRole")
+            if role:
+                icons.apply(button, role)
+        self.refresh()
 
     # -- data --------------------------------------------------------------
 
@@ -417,6 +438,45 @@ class MetadataScreen(QWidget):
             )
             return
 
+        total_seconds = sum(job.duration for job in jobs)
+        total_bytes = sum(
+            Path(job.source).stat().st_size
+            for job in jobs if Path(job.source).is_file()
+        )
+        # Measured on this machine: AV1 at the default preset runs a little
+        # faster than realtime, VP9 slower. Real footage varies widely.
+        rate = {
+            OutputFormat.WEBM_AV1: 0.9,
+            OutputFormat.WEBM_VP9: 1.8,
+            OutputFormat.OGV: 0.8,
+        }.get(target_format, 1.0)
+
+        summary = JobSummary(
+            title="Convert for Commons",
+            action="Start converting",
+            intro=(
+                f"About to convert {len(jobs)} clips into "
+                f"{target_format.label.split(' — ')[0]}."
+            ),
+            rows=[
+                ("Clips", str(len(jobs))),
+                ("Total video", format_timecode(total_seconds)),
+                ("Source size", human_size(total_bytes)),
+                ("Video codec", convert_settings.video_codec),
+                ("Audio codec", convert_settings.audio_codec),
+                ("Quality (CRF)", str(convert_settings.crf)),
+                ("Writing to", settings.output_directory),
+            ],
+            warning=(
+                "Encoding video is slow — this can run for hours on a full "
+                "day of sessions. You can keep using the rest of the app, and "
+                "cancelling finishes the current clip before stopping."
+            ),
+            estimate_seconds=total_seconds * rate,
+        )
+        if ConfirmJobDialog(summary, self).exec() != ConfirmJobDialog.Accepted:
+            return
+
         self._worker = ConvertWorker(jobs, ffmpeg_path=settings.ffmpeg_path)
         self._worker.signals.progress.connect(self._convert_progress)
         self._worker.signals.row_finished.connect(self._convert_finished)
@@ -431,9 +491,27 @@ class MetadataScreen(QWidget):
         self.convert_button.setEnabled(False)
         self._completed = 0
         self.summary.show_message(f"Converting {len(jobs)} clips…", "info")
+
+        self._dialog = JobProgressDialog(
+            f"Converting to {target_format.label.split(' — ')[0]}",
+            [Path(job.output).name for job in jobs],
+            parent=self,
+            note=(
+                f"{convert_settings.video_codec} / {convert_settings.audio_codec}"
+                f" · CRF {convert_settings.crf} · writing to "
+                f"{settings.output_directory}"
+            ),
+        )
+        for row, job in enumerate(jobs):
+            self._dialog.track(job.index, row)
+        self._dialog.cancelled.connect(self._cancel)
+
         start(self._worker)
+        self._dialog.exec()
 
     def _convert_progress(self, index: int, value: float) -> None:
+        if self._dialog is not None:
+            self._dialog.set_progress(index, value)
         item = self.table.item(index, COL_NOTES)
         if item:
             self._updating = True
@@ -443,6 +521,8 @@ class MetadataScreen(QWidget):
     def _convert_finished(self, index: int, succeeded: bool, message: str) -> None:
         self._completed += 1
         self.progress.setValue(self._completed)
+        if self._dialog is not None:
+            self._dialog.set_finished(index, succeeded, message)
         job = getattr(self, "_jobs_by_index", {}).get(index)
         if succeeded and job and 0 <= index < len(self.state.clips):
             # Point the clip at its uploadable file.
@@ -455,6 +535,8 @@ class MetadataScreen(QWidget):
 
     def _convert_all_finished(self, succeeded: bool, summary: str) -> None:
         self._worker = None
+        if self._dialog is not None:
+            self._dialog.complete(summary)
         self.progress.setVisible(False)
         self.cancel_button.setVisible(False)
         self.convert_button.setEnabled(True)

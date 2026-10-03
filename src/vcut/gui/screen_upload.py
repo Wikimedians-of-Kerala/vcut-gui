@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from ..manifest import build_entry, write_manifest
 from ..upload import check_login, commons_url, validate_for_upload
+from . import icons
 from .state import AppState
 from .widgets import StatusLabel, human_size, row_colour
 from .workers import UploadWorker, start
@@ -54,6 +55,8 @@ class UploadScreen(QWidget):
         login_row.addWidget(self.login_status, 1)
         check = QPushButton("Check login")
         check.setAutoDefault(False)
+        icons.apply(check, "login")
+        check.setProperty("iconRole", "login")
         check.clicked.connect(self.check_login)
         login_row.addWidget(check)
         layout.addLayout(login_row)
@@ -103,6 +106,8 @@ class UploadScreen(QWidget):
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setAutoDefault(False)
         self.cancel_button.setVisible(False)
+        icons.apply(self.cancel_button, "cancel")
+        self.cancel_button.setProperty("iconRole", "cancel")
         self.cancel_button.clicked.connect(self._cancel)
         actions.addWidget(self.cancel_button)
 
@@ -111,14 +116,27 @@ class UploadScreen(QWidget):
         self.manifest_button.setToolTip(
             "Write the manifest and descriptions so this folder can be uploaded later"
         )
+        icons.apply(self.manifest_button, "save")
+        self.manifest_button.setProperty("iconRole", "save")
         self.manifest_button.clicked.connect(self.write_manifest_files)
         actions.addWidget(self.manifest_button)
 
         self.upload_button = QPushButton("Upload to Commons")
         self.upload_button.setDefault(True)
+        icons.apply(self.upload_button, "upload")
+        self.upload_button.setProperty("iconRole", "upload")
         self.upload_button.clicked.connect(self._upload)
         actions.addWidget(self.upload_button)
         layout.addLayout(actions)
+
+    def restyle(self) -> None:
+        """Rebuild row colours and button icons after a theme change."""
+        for button in self.findChildren(QPushButton):
+            role = button.property("iconRole")
+            if role:
+                icons.apply(button, role)
+        for row, (_index, prepared) in enumerate(self._files):
+            self._colour_row(row, bool(validate_for_upload(prepared)))
 
     # -- login -------------------------------------------------------------
 

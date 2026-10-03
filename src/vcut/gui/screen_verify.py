@@ -12,11 +12,9 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
     QHeaderView,
-    QLabel,
     QMessageBox,
     QProgressBar,
     QPushButton,
-    QSlider,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -26,6 +24,9 @@ from PySide6.QtWidgets import (
 
 from ..models import Clip, ClipStatus, TimecodeError, format_timecode, parse_timecode
 from ..naming import output_path, unique_path
+from . import icons
+from .player_bar import PlayerBar
+from .progress_dialog import ConfirmJobDialog, JobProgressDialog, JobSummary
 from .state import AppState
 from .widgets import StatusLabel, row_colour
 from .workers import CutJob, CutWorker, start
@@ -43,6 +44,7 @@ class VerifyScreen(QWidget):
         super().__init__(parent)
         self.state = state
         self._worker: CutWorker | None = None
+        self._dialog: JobProgressDialog | None = None
         self._updating = False
         self._verified: set[int] = set()
         self._preview_end: float | None = None
@@ -82,52 +84,29 @@ class VerifyScreen(QWidget):
         self.player.errorOccurred.connect(self._player_error)
         layout.addWidget(self.video, 1)
 
-        self.scrubber = QSlider(Qt.Horizontal)
-        self.scrubber.setRange(0, 0)
-        self.scrubber.sliderMoved.connect(self.player.setPosition)
-        layout.addWidget(self.scrubber)
-
-        controls = QHBoxLayout()
-        self.play_button = QPushButton("Play")
-        self.play_button.setAutoDefault(False)
-        self.play_button.clicked.connect(self._toggle_play)
-        controls.addWidget(self.play_button)
-
-        for label, delta in (("-10s", -10_000), ("-1s", -1000),
-                             ("+1s", 1000), ("+10s", 10_000)):
-            button = QPushButton(label)
-            button.setAutoDefault(False)
-            button.setFixedWidth(52)
-            button.clicked.connect(lambda _=False, d=delta: self._nudge(d))
-            controls.addWidget(button)
-
-        self.time_label = QLabel("00:00:00")
-        self.time_label.setMinimumWidth(70)
-        controls.addWidget(self.time_label)
-        controls.addStretch(1)
-        layout.addLayout(controls)
-
-        jumps = QHBoxLayout()
-        for text, tip, slot in (
-            ("Go to start", "Jump to this clip's start time", self._goto_start),
-            ("Go to end", "Jump to this clip's end time", self._goto_end),
-            ("Preview", "Play the first few seconds of this clip", self._preview),
-        ):
-            button = QPushButton(text)
-            button.setAutoDefault(False)
-            button.setToolTip(tip)
-            button.clicked.connect(slot)
-            jumps.addWidget(button)
-        layout.addLayout(jumps)
+        self.bar = PlayerBar()
+        self.bar.play_toggled.connect(self._toggle_play)
+        self.bar.nudged.connect(self._nudge)
+        self.bar.go_to_start.connect(self._goto_start)
+        self.bar.go_to_end.connect(self._goto_end)
+        self.bar.preview_requested.connect(self._preview)
+        self.bar.scrubbed.connect(self.player.setPosition)
+        self.bar.seek_requested.connect(self._seek_seconds)
+        layout.addWidget(self.bar)
 
         grabs = QHBoxLayout()
+        grabs.setContentsMargins(0, 2, 0, 0)
         set_start = QPushButton("Set start from player")
         set_start.setAutoDefault(False)
         set_start.setToolTip("Use the current playback position as this clip's start")
+        icons.apply(set_start, "mark-in")
+        set_start.setProperty("iconRole", "mark-in")
         set_start.clicked.connect(lambda: self._set_from_player(COL_START))
         set_end = QPushButton("Set end from player")
         set_end.setAutoDefault(False)
         set_end.setToolTip("Use the current playback position as this clip's end")
+        icons.apply(set_end, "mark-out")
+        set_end.setProperty("iconRole", "mark-out")
         set_end.clicked.connect(lambda: self._set_from_player(COL_END))
         grabs.addWidget(set_start)
         grabs.addWidget(set_end)
@@ -151,19 +130,29 @@ class VerifyScreen(QWidget):
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(COL_NAME, QHeaderView.Stretch)
         for column in (COL_SELECT, COL_START, COL_END, COL_LENGTH,
-                       COL_CODE, COL_OK, COL_STATUS):
+                       COL_CODE, COL_OK):
             header.setSectionResizeMode(column, QHeaderView.ResizeToContents)
+        # Status messages can be long; let them be resized rather than letting
+        # them squeeze the title column down to nothing.
+        header.setSectionResizeMode(COL_STATUS, QHeaderView.Interactive)
+        header.resizeSection(COL_STATUS, 170)
+        header.setMinimumSectionSize(50)
+        self.table.setTextElideMode(Qt.ElideRight)
         layout.addWidget(self.table, 1)
 
         edits = QHBoxLayout()
-        for text, tip, slot in (
-            ("Add clip", "Add a new clip at the current playback position", self._add_clip),
-            ("Duplicate", "Copy the selected clip", self._duplicate_clip),
-            ("Remove", "Delete the selected clip from the list", self._remove_clip),
+        for text, tip, role, slot in (
+            ("Add clip", "Add a new clip at the current playback position",
+             "add", self._add_clip),
+            ("Duplicate", "Copy the selected clip", "duplicate", self._duplicate_clip),
+            ("Remove", "Delete the selected clip from the list",
+             "remove", self._remove_clip),
         ):
             button = QPushButton(text)
             button.setAutoDefault(False)
             button.setToolTip(tip)
+            icons.apply(button, role)
+            button.setProperty("iconRole", role)
             button.clicked.connect(slot)
             edits.addWidget(button)
         edits.addStretch(1)
@@ -171,6 +160,8 @@ class VerifyScreen(QWidget):
         self.save_button = QPushButton("Save list…")
         self.save_button.setAutoDefault(False)
         self.save_button.setToolTip("Write the edited clip list back out as a CSV")
+        icons.apply(self.save_button, "save")
+        self.save_button.setProperty("iconRole", "save")
         self.save_button.clicked.connect(self._save_list)
         edits.addWidget(self.save_button)
         layout.addLayout(edits)
@@ -179,16 +170,22 @@ class VerifyScreen(QWidget):
         verified = QPushButton("Mark checked")
         verified.setAutoDefault(False)
         verified.setToolTip("Mark this clip as verified and move to the next")
+        icons.apply(verified, "check")
+        verified.setProperty("iconRole", "check")
         verified.clicked.connect(self._mark_verified)
         marks.addWidget(verified)
 
         select_all = QPushButton("Select all")
         select_all.setAutoDefault(False)
+        icons.apply(select_all, "select-all")
+        select_all.setProperty("iconRole", "select-all")
         select_all.clicked.connect(lambda: self._set_all_selected(True))
         marks.addWidget(select_all)
 
         select_none = QPushButton("Select none")
         select_none.setAutoDefault(False)
+        icons.apply(select_none, "select-none")
+        select_none.setProperty("iconRole", "select-none")
         select_none.clicked.connect(lambda: self._set_all_selected(False))
         marks.addWidget(select_none)
         marks.addStretch(1)
@@ -214,14 +211,28 @@ class VerifyScreen(QWidget):
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setAutoDefault(False)
         self.cancel_button.setVisible(False)
+        icons.apply(self.cancel_button, "cancel")
+        self.cancel_button.setProperty("iconRole", "cancel")
         self.cancel_button.clicked.connect(self._cancel)
         layout.addWidget(self.cancel_button)
 
         self.split_button = QPushButton("Split the video")
         self.split_button.setDefault(True)
+        icons.apply(self.split_button, "cut")
+        self.split_button.setProperty("iconRole", "cut")
         self.split_button.clicked.connect(self.start_cutting)
         layout.addWidget(self.split_button)
         return bar
+
+    def restyle(self) -> None:
+        """Repaint what does not follow the palette on its own."""
+        self.bar.restyle()
+        for button in self.findChildren(QPushButton):
+            role = button.property("iconRole")
+            if role:
+                icons.apply(button, role)
+        for row, clip in enumerate(self.state.clips):
+            self._colour_row(row, clip)
 
     # -- loading -----------------------------------------------------------
 
@@ -379,10 +390,13 @@ class VerifyScreen(QWidget):
     def _toggle_play(self) -> None:
         if self.player.playbackState() == QMediaPlayer.PlayingState:
             self.player.pause()
-            self.play_button.setText("Play")
+            self._set_play_button("Play", "play")
         else:
             self.player.play()
-            self.play_button.setText("Pause")
+            self._set_play_button("Pause", "pause")
+
+    def _set_play_button(self, _text: str, role: str) -> None:
+        self.bar.set_playing(role == "pause")
 
     def _nudge(self, delta_ms: int) -> None:
         self.player.setPosition(max(0, self.player.position() + delta_ms))
@@ -421,7 +435,7 @@ class VerifyScreen(QWidget):
         self._seek_seconds(start)
         self._preview_end = start + seconds
         self.player.play()
-        self.play_button.setText("Pause")
+        self._set_play_button("Pause", "pause")
 
     def _set_from_player(self, column: int) -> None:
         row, clip = self._current_clip()
@@ -445,16 +459,14 @@ class VerifyScreen(QWidget):
         self._refresh_summary()
 
     def _position_changed(self, position_ms: int) -> None:
-        if not self.scrubber.isSliderDown():
-            self.scrubber.setValue(position_ms)
-        self.time_label.setText(format_timecode(position_ms / 1000))
+        self.bar.set_position(position_ms)
         if self._preview_end is not None and position_ms / 1000 >= self._preview_end:
             self.player.pause()
-            self.play_button.setText("Play")
+            self._set_play_button("Play", "play")
             self._preview_end = None
 
     def _duration_changed(self, duration_ms: int) -> None:
-        self.scrubber.setRange(0, duration_ms)
+        self.bar.set_duration(duration_ms)
 
     def _player_error(self, _error, message: str) -> None:
         if message:
@@ -475,6 +487,35 @@ class VerifyScreen(QWidget):
         self._refresh_summary()
         if row + 1 < self.table.rowCount():
             self.table.setCurrentCell(row + 1, COL_NAME)
+
+    def cut_box_label(self) -> str:
+        """How the chosen cut mode reads in a summary."""
+        from ..ffmpeg import CutMode
+
+        return {
+            CutMode.SMART: "Accurate, fast seek",
+            CutMode.COPY: "Stream copy (snaps to keyframes)",
+            CutMode.REENCODE: "Accurate, decode from the start",
+        }.get(self.state.settings.encoding.cut_mode, "")
+
+    def _estimate_seconds(self, jobs: list, total_seconds: float) -> float:
+        """A rough guess at how long the batch will take.
+
+        Stream copy is effectively instant; re-encoding runs at a speed that
+        depends heavily on the codec, so these are deliberately broad.
+        """
+        from ..ffmpeg import CutMode, OutputFormat
+
+        settings = self.state.settings.encoding
+        if settings.cut_mode is CutMode.COPY and settings.output_format is OutputFormat.MP4:
+            return max(2.0, len(jobs) * 0.5)
+        rate = {
+            OutputFormat.MP4: 0.25,        # x264 is several times realtime
+            OutputFormat.WEBM_AV1: 0.6,
+            OutputFormat.WEBM_VP9: 1.2,
+            OutputFormat.OGV: 0.5,
+        }.get(settings.output_format, 0.5)
+        return total_seconds * rate
 
     # -- adding and removing rows -----------------------------------------
 
@@ -666,15 +707,44 @@ class VerifyScreen(QWidget):
             return
 
         unchecked = len(jobs) - len(self._verified & {j.index for j in jobs})
+        encoding = settings.encoding
+        total_seconds = sum(job.end - job.start for job in jobs)
+
+        rows = [
+            ("Clips to cut", str(len(jobs))),
+            ("Total video", format_timecode(total_seconds)),
+            ("Format", encoding.output_format.label.split(" — ")[0]),
+            ("Cutting", self.cut_box_label()),
+            ("Writing to", settings.output_directory),
+        ]
+        if skipped:
+            rows.append(("Skipped (has problems)", str(skipped)))
         if unchecked:
-            answer = QMessageBox.question(
-                self, "Not everything is checked",
-                f"{unchecked} of the {len(jobs)} clips have not been marked as "
-                f"checked.\n\nCut them anyway?",
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            rows.append(("Not yet checked", str(unchecked)))
+
+        warning = ""
+        if unchecked:
+            warning = (
+                f"{unchecked} of these clips have not been marked as checked. "
+                f"Cutting them now means their start and end times have not "
+                f"been seen against the video."
             )
-            if answer != QMessageBox.Yes:
-                return
+        if settings.dry_run:
+            warning = "Dry run: the commands will be shown but nothing encoded."
+
+        summary = JobSummary(
+            title="Split the video",
+            action="Split the video",
+            intro=(
+                f"About to cut {len(jobs)} clips out of "
+                f"{Path(self.state.source_path).name}."
+            ),
+            rows=rows,
+            warning=warning,
+            estimate_seconds=self._estimate_seconds(jobs, total_seconds),
+        )
+        if ConfirmJobDialog(summary, self).exec() != ConfirmJobDialog.Accepted:
+            return
 
         if skipped:
             self.state.log(f"Skipped {skipped} clips with validation problems.")
@@ -695,7 +765,19 @@ class VerifyScreen(QWidget):
         self.cancel_button.setVisible(True)
         self.split_button.setEnabled(False)
         self.summary.show_message(f"Cutting {len(jobs)} clips…", "info")
+
+        self._dialog = JobProgressDialog(
+            "Splitting the video",
+            [Path(job.output).name for job in jobs],
+            parent=self,
+            note=f"Writing to {settings.output_directory}",
+        )
+        for row, job in enumerate(jobs):
+            self._dialog.track(job.index, row)
+        self._dialog.cancelled.connect(self._cancel)
+
         start(self._worker)
+        self._dialog.exec()
 
     def _job_progress(self, index: int, value: float) -> None:
         if not (0 <= index < len(self.state.clips)):
@@ -703,6 +785,8 @@ class VerifyScreen(QWidget):
         clip = self.state.clips[index]
         clip.status = ClipStatus.RUNNING
         clip.progress = value
+        if self._dialog is not None:
+            self._dialog.set_progress(index, value)
         item = self.table.item(index, COL_STATUS)
         if item:
             self._updating = True
@@ -719,6 +803,8 @@ class VerifyScreen(QWidget):
 
         self._completed_jobs += 1
         self.progress.setValue(self._completed_jobs)
+        if self._dialog is not None:
+            self._dialog.set_finished(index, succeeded, message)
 
         self._updating = True
         item = self.table.item(index, COL_STATUS)
@@ -729,6 +815,8 @@ class VerifyScreen(QWidget):
 
     def _all_finished(self, succeeded: bool, summary: str) -> None:
         self._worker = None
+        if self._dialog is not None:
+            self._dialog.complete(summary)
         self.progress.setVisible(False)
         self.cancel_button.setVisible(False)
         self.split_button.setEnabled(True)
