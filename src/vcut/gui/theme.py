@@ -109,6 +109,45 @@ def build_palette(theme: Theme) -> QPalette:
     return palette
 
 
+def _arrow_icon(colour: str, *, size: int = 10, up: bool = False) -> str:
+    """Write a small triangle PNG and return its path, for the combo arrow.
+
+    Styling ``QComboBox::drop-down`` at all stops Qt drawing its own arrow,
+    and the usual CSS border-triangle trick renders as a flat bar under
+    Fusion. Supplying a real image is the one approach that behaves the same
+    everywhere.
+    """
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtGui import QPainter, QPixmap, QPolygon
+
+    from ..settings import cache_directory
+
+    name = f"arrow-{'up' if up else 'down'}-{colour.lstrip('#')}-{size}.png"
+    target = cache_directory() / name
+    if target.is_file():
+        return target.as_posix()
+
+    width, height = size, size // 2 + 1
+    pixmap = QPixmap(width, height)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing)
+    painter.setPen(Qt.NoPen)
+    painter.setBrush(QColor(colour))
+    if up:
+        points = [QPoint(0, height), QPoint(width, height), QPoint(width // 2, 0)]
+    else:
+        points = [QPoint(0, 0), QPoint(width, 0), QPoint(width // 2, height)]
+    painter.drawPolygon(QPolygon(points))
+    painter.end()
+
+    try:
+        pixmap.save(str(target), "PNG")
+    except OSError:
+        return ""
+    return target.as_posix()
+
+
 def stylesheet(theme: Theme) -> str:
     """Spacing and sizing shared by every screen.
 
@@ -118,6 +157,12 @@ def stylesheet(theme: Theme) -> str:
     """
     colours = DARK if resolve(theme) is Theme.DARK else LIGHT
     border = colours["alternate"] if resolve(theme) is Theme.DARK else "#c7ccd4"
+    arrow = _arrow_icon(colours["text"])
+    arrow_up = _arrow_icon(colours["text"], size=8, up=True)
+    arrow_small = _arrow_icon(colours["text"], size=8)
+    arrow_rule = f"image: url({arrow});" if arrow else ""
+    up_rule = f"image: url({arrow_up});" if arrow_up else ""
+    down_rule = f"image: url({arrow_small});" if arrow_small else ""
     return f"""
     QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox {{
         min-height: 30px;
@@ -133,13 +178,49 @@ def stylesheet(theme: Theme) -> str:
     QComboBox:disabled, QLineEdit:disabled, QSpinBox:disabled {{
         color: {colours["disabled"]};
     }}
+    /* A tinted panel and a divider, so a combo box is visibly more than a
+       text field even before the arrow is noticed. */
     QComboBox::drop-down {{
         subcontrol-origin: padding;
-        subcontrol-position: center right;
-        width: 26px;
-        border: none;
-        /* The arrow itself is left to the style: overriding it with a CSS
-           border triangle renders as a flat bar on Fusion. */
+        subcontrol-position: top right;
+        width: 28px;
+        border-left: 1px solid {border};
+        border-top-right-radius: 4px;
+        border-bottom-right-radius: 4px;
+        background: {colours["button"]};
+    }}
+    QComboBox::drop-down:hover {{ background: {colours["highlight"]}; }}
+    QComboBox::down-arrow {{ {arrow_rule} width: 10px; height: 6px; }}
+    QComboBox::down-arrow:disabled {{ opacity: 0.4; }}
+
+    /* Spin boxes get the same treatment: their steppers are otherwise almost
+       invisible against a restyled field. */
+    QSpinBox::up-button, QDoubleSpinBox::up-button {{
+        subcontrol-origin: border;
+        subcontrol-position: top right;
+        width: 22px;
+        border-left: 1px solid {border};
+        border-top-right-radius: 4px;
+        background: {colours["button"]};
+    }}
+    QSpinBox::down-button, QDoubleSpinBox::down-button {{
+        subcontrol-origin: border;
+        subcontrol-position: bottom right;
+        width: 22px;
+        border-left: 1px solid {border};
+        border-top: 1px solid {border};
+        border-bottom-right-radius: 4px;
+        background: {colours["button"]};
+    }}
+    QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+    QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
+        background: {colours["highlight"]};
+    }}
+    QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+        {up_rule} width: 8px; height: 5px;
+    }}
+    QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+        {down_rule} width: 8px; height: 5px;
     }}
     QComboBox QAbstractItemView {{
         padding: 5px;

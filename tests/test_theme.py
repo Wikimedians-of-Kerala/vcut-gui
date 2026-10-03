@@ -73,3 +73,45 @@ def test_switching_theme_clears_the_icon_cache(qt_app):
     icons.icon("play")
     apply_theme(Theme.DARK)
     assert icons._cached.cache_info().currsize == 0
+
+
+# -- control affordances ---------------------------------------------------
+
+
+def test_dropdowns_get_a_visible_arrow(qt_app):
+    # Styling the drop-down at all stops Qt drawing its own arrow, so the
+    # stylesheet must supply one or a combo looks like a plain text field.
+    sheet = stylesheet(Theme.DARK)
+    assert "QComboBox::down-arrow" in sheet
+    assert "image: url(" in sheet
+
+
+def test_the_dropdown_panel_is_distinguishable(qt_app):
+    sheet = stylesheet(Theme.DARK)
+    assert "QComboBox::drop-down" in sheet
+    assert "border-left" in sheet
+
+
+def test_spin_boxes_get_visible_steppers(qt_app):
+    sheet = stylesheet(Theme.DARK)
+    assert "QSpinBox::up-arrow" in sheet
+    assert "QSpinBox::down-arrow" in sheet
+
+
+def test_the_arrow_images_are_written_and_differ(qt_app):
+    from pathlib import Path
+
+    from vcut.gui.theme import DARK, _arrow_icon
+
+    down = _arrow_icon(DARK["text"])
+    up = _arrow_icon(DARK["text"], up=True)
+    assert Path(down).is_file()
+    assert Path(up).is_file()
+    assert down != up
+    assert Path(down).read_bytes() != Path(up).read_bytes()
+
+
+def test_arrow_images_are_tinted_per_theme(qt_app):
+    from vcut.gui.theme import DARK, LIGHT, _arrow_icon
+
+    assert _arrow_icon(DARK["text"]) != _arrow_icon(LIGHT["text"])

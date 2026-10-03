@@ -167,3 +167,59 @@ def test_painting_a_marked_scrubber_does_not_raise(bar, qt_app):
     bar.show()
     qt_app.processEvents()
     assert not bar.grab().isNull()
+
+
+# -- clicking the timeline -------------------------------------------------
+
+
+def _click(scrubber, milliseconds):
+    from PySide6.QtCore import QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+
+    track = scrubber._groove_rect()
+    x = track.left() + int(milliseconds * track.width() / scrubber.maximum())
+    point = QPointF(x, scrubber.height() / 2)
+    scrubber.mousePressEvent(
+        QMouseEvent(QMouseEvent.Type.MouseButtonPress, point, point,
+                    Qt.LeftButton, Qt.LeftButton, Qt.NoModifier)
+    )
+    scrubber.mouseReleaseEvent(
+        QMouseEvent(QMouseEvent.Type.MouseButtonRelease, point, point,
+                    Qt.LeftButton, Qt.NoButton, Qt.NoModifier)
+    )
+
+
+def test_clicking_the_groove_seeks_there(bar, qt_app):
+    # A plain QSlider page-steps instead, which is wrong for a scrubber.
+    bar.scrubber.resize(600, 26)
+    seen = []
+    bar.scrubbed.connect(seen.append)
+    _click(bar.scrubber, 90_000)
+    assert seen and abs(seen[-1] - 90_000) < 1500
+
+
+def test_clicking_a_marked_clip_reports_its_index(bar, qt_app):
+    bar.scrubber.resize(600, 26)
+    bar.set_clip_blocks([(5, 25), (40, 60), (80, 95)])
+    seen = []
+    bar.clip_clicked.connect(seen.append)
+    _click(bar.scrubber, 87_000)
+    assert seen == [2]
+
+
+def test_clicking_between_clips_selects_nothing(bar, qt_app):
+    bar.scrubber.resize(600, 26)
+    bar.set_clip_blocks([(5, 25), (80, 95)])
+    seen = []
+    bar.clip_clicked.connect(seen.append)
+    _click(bar.scrubber, 50_000)
+    assert seen == []
+
+
+def test_clicking_still_seeks_when_it_misses_every_clip(bar, qt_app):
+    bar.scrubber.resize(600, 26)
+    bar.set_clip_blocks([(5, 25)])
+    seen = []
+    bar.scrubbed.connect(seen.append)
+    _click(bar.scrubber, 120_000)
+    assert seen and abs(seen[-1] - 120_000) < 1500

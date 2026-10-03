@@ -48,6 +48,7 @@ class VerifyScreen(QWidget):
         self._updating = False
         self._verified: set[int] = set()
         self._preview_end: float | None = None
+        self._seek_on_select = True
 
         self._build()
         self.state.clips_changed.connect(self.reload)
@@ -60,18 +61,25 @@ class VerifyScreen(QWidget):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(8)
 
-        splitter = QSplitter(Qt.Horizontal)
-        splitter.addWidget(self._player_panel())
-        splitter.addWidget(self._table_panel())
-        splitter.setStretchFactor(0, 5)
-        splitter.setStretchFactor(1, 4)
-        splitter.setSizes([640, 520])
-        layout.addWidget(splitter, 1)
+        self.panes = QSplitter(Qt.Horizontal)
+        self.panes.addWidget(self._player_panel())
+        self.panes.addWidget(self._table_panel())
+        self.panes.setStretchFactor(0, 5)
+        self.panes.setStretchFactor(1, 4)
+        self.panes.setSizes([640, 520])
 
+        # A vertical splitter too, so the video and list can be traded off
+        # against the transport — useful when checking a lot of cut points.
         # The transport spans the whole window rather than sitting under the
         # video: a full-width timeline makes the clip blocks far easier to
         # read against the length of the recording.
-        layout.addWidget(self._transport_panel())
+        self.rows = QSplitter(Qt.Vertical)
+        self.rows.addWidget(self.panes)
+        self.rows.addWidget(self._transport_panel())
+        self.rows.setStretchFactor(0, 5)
+        self.rows.setStretchFactor(1, 0)
+        self.rows.setCollapsible(1, False)
+        layout.addWidget(self.rows, 1)
         layout.addWidget(self._action_bar())
 
     def _player_panel(self) -> QWidget:
@@ -110,6 +118,7 @@ class VerifyScreen(QWidget):
         self.bar.preview_requested.connect(self._preview)
         self.bar.scrubbed.connect(self.player.setPosition)
         self.bar.seek_requested.connect(self._seek_seconds)
+        self.bar.clip_clicked.connect(self._select_clip)
         layout.addWidget(self.bar)
 
         grabs = QHBoxLayout()
@@ -429,7 +438,19 @@ class VerifyScreen(QWidget):
         else:
             self.row_status.show_message("")
         self._highlight_span(clip)
-        self._goto_start()
+        if self._seek_on_select:
+            self._goto_start()
+
+    def _select_clip(self, index: int) -> None:
+        """Select the clip whose block was clicked on the timeline."""
+        if 0 <= index < self.table.rowCount():
+            # Selecting a row normally seeks to its start; the click has
+            # already placed the playhead, so leave it where the user put it.
+            self._seek_on_select = False
+            try:
+                self.table.setCurrentCell(index, COL_NAME)
+            finally:
+                self._seek_on_select = True
 
     def _refresh_blocks(self) -> None:
         """Redraw the markers for every clip in the list."""

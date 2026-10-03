@@ -61,6 +61,9 @@ class SetupScreen(QWidget):
     def __init__(self, state: AppState, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.state = state
+        # Whether the output folder is still the one we suggested.
+        self._output_is_automatic = True
+        self._automatic_output = ""
         self._build()
         self._load_from_settings()
 
@@ -73,10 +76,13 @@ class SetupScreen(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.NoFrame)
+        # A group box's title sits above its frame, so without a top margin
+        # the first one is clipped by the heading when the page is scrolled.
+        scroll.setViewportMargins(0, 6, 0, 0)
         inner = QWidget()
         layout = QVBoxLayout(inner)
-        layout.setContentsMargins(16, 10, 16, 16)
-        layout.setSpacing(18)
+        layout.setContentsMargins(16, 14, 16, 16)
+        layout.setSpacing(20)
 
         layout.addWidget(self._files_group())
         layout.addWidget(self._event_group())
@@ -148,6 +154,9 @@ class SetupScreen(QWidget):
         self.output_picker = FilePicker("Where the clips should be written", directory=True)
         self.output_picker.path_changed.connect(self._remember_output)
         form.addRow("Folder", self.output_picker)
+
+        self.output_status = StatusLabel("")
+        form.addRow("", self.output_status)
 
         self.filename_field = QLineEdit()
         self.filename_field.setPlaceholderText("{index:02d}-{programme}")
@@ -262,6 +271,7 @@ class SetupScreen(QWidget):
         self.event_field.setText(settings.event_slug)
         self.offline_box.setChecked(settings.offline)
         self.output_picker.field.setText(settings.output_directory)
+        self._output_is_automatic = not settings.output_directory
         self.filename_field.setText(settings.filename_template)
         self.subfolder_field.setText(settings.subfolder_template)
         self.separate_box.setChecked(settings.separate_by_format)
@@ -440,8 +450,31 @@ class SetupScreen(QWidget):
                 f"{human_size(info.size_bytes)}",
                 "good",
             )
-            if not self.output_picker.path():
-                self.output_picker.set_path(str(Path(path).parent / "clips"))
+            self._suggest_output(path)
+        self.ready_changed.emit(self.is_ready())
+
+    def _suggest_output(self, source: str) -> None:
+        """Put the clips beside the source video by default.
+
+        The suggestion follows whichever video is chosen, but a folder the
+        user picked themselves is never overwritten.
+        """
+        suggestion = str(Path(source).parent / f"{Path(source).stem}-clips")
+        current = self.output_picker.path()
+        if current and not self._output_is_automatic:
+            return
+        if current == suggestion:
+            return
+
+        self._output_is_automatic = True
+        self._automatic_output = suggestion
+        self.output_picker.field.setText(suggestion)
+        self.state.settings.output_directory = suggestion
+        self.output_status.show_message(
+            "Chosen automatically from the video — change it if you want it "
+            "somewhere else.",
+            "muted",
+        )
         self.ready_changed.emit(self.is_ready())
 
     def _csv_chosen(self, path: str) -> None:
@@ -490,6 +523,11 @@ class SetupScreen(QWidget):
         self.state.settings.event_slug = self.event_field.text().strip()
 
     def _remember_output(self, path: str) -> None:
+        # A path typed or browsed to by hand is the user's own choice, and
+        # must survive picking a different source video.
+        if path != self._automatic_output:
+            self._output_is_automatic = False
+            self.output_status.show_message("")
         self.state.settings.output_directory = path
         self.ready_changed.emit(self.is_ready())
 

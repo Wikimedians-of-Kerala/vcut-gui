@@ -33,6 +33,11 @@ class ClipScrubber(QSlider):
     extent is visible at a glance while scrubbing around it.
     """
 
+    #: A click landing inside one of the marked blocks.
+    block_clicked = Signal(int)
+    #: Any click or drag on the groove, as a position in milliseconds.
+    seeked = Signal(int)
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(Qt.Horizontal, parent)
         self._span: tuple[int, int] | None = None   # the selected clip
@@ -77,6 +82,56 @@ class ClipScrubber(QSlider):
         # half a handle at each end.
         inset = 9
         return QRect(inset, top, max(1, self.width() - inset * 2), height)
+
+    # -- interaction -------------------------------------------------------
+
+    def _value_at(self, x: int) -> int:
+        """The timeline position under a pixel on the groove."""
+        track = self._groove_rect()
+        if track.width() <= 0:
+            return 0
+        fraction = (x - track.left()) / track.width()
+        return int(max(0.0, min(1.0, fraction)) * self.maximum())
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        """Jump to wherever the groove was clicked.
+
+        A plain QSlider page-steps on a click away from the handle, which is
+        not what anyone expects from a video scrubber.
+        """
+        if event.button() != Qt.LeftButton:
+            super().mousePressEvent(event)
+            return
+
+        position = self._value_at(int(event.position().x()))
+
+        # Selecting a clip may itself move the playhead, so claim the click
+        # first and let the seek below settle the final position.
+        for index, (start, end) in enumerate(self._blocks):
+            if start <= position <= end:
+                self.block_clicked.emit(index)
+                break
+
+        self.setValue(position)
+        self.seeked.emit(position)
+        event.accept()
+        self.setSliderDown(True)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if self.isSliderDown():
+            position = self._value_at(int(event.position().x()))
+            self.setValue(position)
+            self.seeked.emit(position)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        if self.isSliderDown():
+            self.setSliderDown(False)
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
     def paintEvent(self, event) -> None:  # noqa: N802
         # Everything is drawn *under* the slider so the handle stays on top.
@@ -231,6 +286,7 @@ class PlayerBar(QFrame):
     preview_requested = Signal()
     scrubbed = Signal(int)        # milliseconds
     seek_requested = Signal(float)   # seconds, from the jump box
+    clip_clicked = Signal(int)       # index of a marked clip on the timeline
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -261,6 +317,9 @@ class PlayerBar(QFrame):
         self.scrubber.setObjectName("playerScrubber")
         self.scrubber.setRange(0, 0)
         self.scrubber.sliderMoved.connect(self.scrubbed)
+        # A click anywhere on the groove seeks, and lands on a clip if it hits one.
+        self.scrubber.seeked.connect(self.scrubbed)
+        self.scrubber.block_clicked.connect(self.clip_clicked)
         self.scrubber.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         scrub_row.addWidget(self.scrubber, 1)
 
