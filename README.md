@@ -176,6 +176,10 @@ uv run pytest
 The suite runs offline — the schedule tests use a recorded payload rather than
 the network.
 
+## Changes
+
+See [CHANGELOG.md](CHANGELOG.md).
+
 ## Licence
 
 [GNU GPL v3](https://www.gnu.org/licenses/gpl-3.0.en.html) or later.
