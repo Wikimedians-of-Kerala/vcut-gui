@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.1 — 2026-10-03
 
 - Projects: `File > Save project` stores the whole job in a `.vcut` file —
   clips, their state, settings, checked marks, and the Commons address of
@@ -13,6 +13,14 @@
   published, and are not offered for upload again.
 - Table columns can be resized and reordered on every screen; previously
   most were fixed to their contents and could not be dragged at all.
+- Dropdown arrows and spin box steppers are drawn explicitly: styling the
+  controls stopped Qt drawing its own, leaving them looking like plain text
+  fields.
+- Clicking the timeline seeks there and selects the clip under the click.
+- The output folder is suggested from the source video and follows it,
+  unless you have chosen one yourself.
+- `File > Video information` shows the full ffprobe detail.
+- Fixed the wheel build, which failed on a duplicated logo entry.
 
 ## 0.1.0 — 2026-10-03
 
