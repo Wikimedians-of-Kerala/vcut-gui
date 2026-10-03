@@ -250,6 +250,14 @@ def stylesheet(theme: Theme) -> str:
         background: transparent;
     }}
     QPushButton#transportButton:hover {{ border: none; }}
+    /* The marking buttons sit inside the transport, so they are smaller than
+       a normal button and carry no heavy border. */
+    QPushButton#markButton {{
+        min-height: 30px;
+        padding: 5px 12px;
+        border: 1px solid {border};
+        border-radius: 5px;
+    }}
     /* Each section is a card: a filled panel with its title sitting on the
        border, so the groups on the setup screen are clearly separate. */
     QGroupBox {{

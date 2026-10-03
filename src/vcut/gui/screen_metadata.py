@@ -70,7 +70,7 @@ class MetadataScreen(QWidget):
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 4)
         layout.addWidget(splitter, 1)
-        layout.addWidget(self._action_bar())
+        self._actions = self._action_bar()
 
     def _commons_group(self) -> QGroupBox:
         group = QGroupBox("Commons details applied to every clip")
@@ -180,10 +180,15 @@ class MetadataScreen(QWidget):
         layout.addLayout(buttons)
         return panel
 
+    def action_widgets(self) -> QWidget:
+        """This screen's buttons, for the window's shared bottom row."""
+        return self._actions
+
     def _action_bar(self) -> QWidget:
         bar = QWidget()
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
 
         self.convert_box = QComboBox()
         for fmt in OutputFormat:

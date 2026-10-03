@@ -239,10 +239,30 @@ class MediaInfo:
     audio_codec: str = ""
     fps: float = 0.0
     size_bytes: int = 0
+    #: The full ffprobe payload, for the detailed information window.
+    raw: dict = field(default_factory=dict)
 
     @property
     def resolution(self) -> str:
         return f"{self.width}×{self.height}" if self.width and self.height else "unknown"
+
+    @property
+    def format_name(self) -> str:
+        return str(self.raw.get("format", {}).get("format_long_name", ""))
+
+    @property
+    def bitrate(self) -> int:
+        try:
+            return int(self.raw.get("format", {}).get("bit_rate") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def streams(self, kind: str = "") -> list[dict]:
+        """The probed streams, optionally of one type."""
+        found = self.raw.get("streams", []) or []
+        if kind:
+            return [s for s in found if s.get("codec_type") == kind]
+        return list(found)
 
 
 def find_executable(name: str, configured: str = "") -> str:
@@ -283,7 +303,7 @@ def probe(source: str | Path, ffprobe_path: str = "") -> MediaInfo:
         raise FFmpegError(f"ffprobe failed: {completed.stderr.strip()[:400]}")
 
     payload = json.loads(completed.stdout or "{}")
-    info = MediaInfo()
+    info = MediaInfo(raw=payload)
 
     fmt = payload.get("format", {})
     info.duration = float(fmt.get("duration") or 0.0)

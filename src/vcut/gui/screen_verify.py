@@ -80,7 +80,7 @@ class VerifyScreen(QWidget):
         self.rows.setStretchFactor(1, 0)
         self.rows.setCollapsible(1, False)
         layout.addWidget(self.rows, 1)
-        layout.addWidget(self._action_bar())
+        self._actions = self._action_bar()
 
     def _player_panel(self) -> QWidget:
         panel = QWidget()
@@ -119,26 +119,10 @@ class VerifyScreen(QWidget):
         self.bar.scrubbed.connect(self.player.setPosition)
         self.bar.seek_requested.connect(self._seek_seconds)
         self.bar.clip_clicked.connect(self._select_clip)
+        # Marking lives in the bar itself, beside the playhead it reads from.
+        self.bar.mark_in.connect(lambda: self._set_from_player(COL_START))
+        self.bar.mark_out.connect(lambda: self._set_from_player(COL_END))
         layout.addWidget(self.bar)
-
-        grabs = QHBoxLayout()
-        grabs.setContentsMargins(0, 0, 0, 0)
-        set_start = QPushButton("Set start from player")
-        set_start.setAutoDefault(False)
-        set_start.setToolTip("Use the current playback position as this clip's start")
-        icons.apply(set_start, "mark-in")
-        set_start.setProperty("iconRole", "mark-in")
-        set_start.clicked.connect(lambda: self._set_from_player(COL_START))
-        set_end = QPushButton("Set end from player")
-        set_end.setAutoDefault(False)
-        set_end.setToolTip("Use the current playback position as this clip's end")
-        icons.apply(set_end, "mark-out")
-        set_end.setProperty("iconRole", "mark-out")
-        set_end.clicked.connect(lambda: self._set_from_player(COL_END))
-        grabs.addWidget(set_start)
-        grabs.addWidget(set_end)
-        grabs.addStretch(1)
-        layout.addLayout(grabs)
         return panel
 
     def _table_panel(self) -> QWidget:
@@ -239,6 +223,10 @@ class VerifyScreen(QWidget):
         self.row_status = StatusLabel("")
         layout.addWidget(self.row_status)
         return panel
+
+    def action_widgets(self) -> QWidget:
+        """This screen's buttons, for the window's shared bottom row."""
+        return self._actions
 
     def _action_bar(self) -> QWidget:
         bar = QWidget()

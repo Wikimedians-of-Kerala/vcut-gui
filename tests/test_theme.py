@@ -115,3 +115,14 @@ def test_arrow_images_are_tinted_per_theme(qt_app):
     from vcut.gui.theme import DARK, LIGHT, _arrow_icon
 
     assert _arrow_icon(DARK["text"]) != _arrow_icon(LIGHT["text"])
+
+
+def test_the_step_bar_carries_the_screen_description(qt_app):
+    # The description used to sit in a banner of its own, costing every
+    # screen a row of height.
+    from vcut.gui.main_window import STEPS, StepBar
+
+    bar = StepBar()
+    bar.set_current(2)
+    assert STEPS[2][1] in bar.caption.text()
+    assert "Step 3 of 4" in bar.caption.text()

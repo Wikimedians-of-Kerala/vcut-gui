@@ -94,7 +94,10 @@ class UploadScreen(QWidget):
         options.addStretch(1)
         layout.addLayout(options)
 
-        actions = QHBoxLayout()
+        self._actions = QWidget()
+        actions = QHBoxLayout(self._actions)
+        actions.setContentsMargins(0, 0, 0, 0)
+        actions.setSpacing(8)
         self.summary = StatusLabel("")
         actions.addWidget(self.summary, 1)
 
@@ -127,7 +130,6 @@ class UploadScreen(QWidget):
         self.upload_button.setProperty("iconRole", "upload")
         self.upload_button.clicked.connect(self._upload)
         actions.addWidget(self.upload_button)
-        layout.addLayout(actions)
 
     def restyle(self) -> None:
         """Rebuild row colours and button icons after a theme change."""
@@ -137,6 +139,10 @@ class UploadScreen(QWidget):
                 icons.apply(button, role)
         for row, (_index, prepared) in enumerate(self._files):
             self._colour_row(row, bool(validate_for_upload(prepared)))
+
+    def action_widgets(self) -> QWidget:
+        """This screen's buttons, for the window's shared bottom row."""
+        return self._actions
 
     # -- login -------------------------------------------------------------
 

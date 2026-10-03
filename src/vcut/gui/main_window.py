@@ -6,7 +6,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence
 from PySide6.QtWidgets import (
     QDockWidget,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -75,8 +74,19 @@ class StepBar(QWidget):
 
         layout.addStretch(1)
 
+        # The step's description lives here rather than in a banner of its
+        # own: a separate heading row repeated what the bar already said and
+        # cost every screen a line of height.
+        self.caption = QLabel("")
+        self.caption.setObjectName("screenSubheading")
+        self.caption.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        layout.addWidget(self.caption)
+
     def set_current(self, index: int) -> None:
         """Mark one step current, and everything before it as done."""
+        self.caption.setText(
+            f"{STEPS[index][1]}   ·   Step {index + 1} of {len(STEPS)}"
+        )
         for position, button in enumerate(self.buttons):
             button.setChecked(position == index)
             button.setProperty("current", position == index)
@@ -84,49 +94,6 @@ class StepBar(QWidget):
             # Qt only re-reads a dynamic property after the style is refreshed.
             button.style().unpolish(button)
             button.style().polish(button)
-
-
-class ScreenHeading(QWidget):
-    """The banner at the top of each screen, naming the step you are on."""
-
-    def __init__(self, step: int, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        title, subtitle = STEPS[step]
-
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(14, 10, 14, 8)
-
-        panel = QFrame()
-        panel.setObjectName("screenHeadingPanel")
-        panel.setAttribute(Qt.WA_StyledBackground, True)
-
-        row = QHBoxLayout(panel)
-        row.setContentsMargins(14, 10, 14, 10)
-        row.setSpacing(14)
-
-        number = QLabel(str(step + 1))
-        number.setObjectName("screenStepNumber")
-        number.setAlignment(Qt.AlignCenter)
-        row.addWidget(number)
-
-        text = QVBoxLayout()
-        text.setSpacing(1)
-        heading = QLabel(title)
-        heading.setObjectName("screenHeading")
-        text.addWidget(heading)
-
-        caption = QLabel(subtitle)
-        caption.setObjectName("screenSubheading")
-        caption.setWordWrap(True)
-        text.addWidget(caption)
-        row.addLayout(text, 1)
-
-        progress = QLabel(f"Step {step + 1} of {len(STEPS)}")
-        progress.setObjectName("screenSubheading")
-        progress.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        row.addWidget(progress)
-
-        outer.addWidget(panel)
 
 
 class MainWindow(QMainWindow):
@@ -138,6 +105,7 @@ class MainWindow(QMainWindow):
 
         self.state = AppState(settings)
         self.state.log_message.connect(self._append_log)
+        self.state.source_changed.connect(self._source_changed)
 
         self.steps = StepBar()
         self.stack = QStackedWidget()
@@ -147,15 +115,9 @@ class MainWindow(QMainWindow):
         self.metadata_screen = MetadataScreen(self.state)
         self.upload_screen = UploadScreen(self.state)
 
-        for step, screen in enumerate((self.setup_screen, self.verify_screen,
-                                       self.metadata_screen, self.upload_screen)):
-            page = QWidget()
-            page_layout = QVBoxLayout(page)
-            page_layout.setContentsMargins(0, 0, 0, 0)
-            page_layout.setSpacing(0)
-            page_layout.addWidget(ScreenHeading(step))
-            page_layout.addWidget(screen, 1)
-            self.stack.addWidget(page)
+        for screen in (self.setup_screen, self.verify_screen,
+                       self.metadata_screen, self.upload_screen):
+            self.stack.addWidget(screen)
 
         for index, button in enumerate(self.steps.buttons):
             button.clicked.connect(lambda _=False, i=index: self.go_to(i))
@@ -169,6 +131,12 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._navigation())
         self.setCentralWidget(central)
 
+        # Each screen contributes its actions to the shared bottom row.
+        for screen in (self.setup_screen, self.verify_screen,
+                       self.metadata_screen, self.upload_screen):
+            actions = getattr(screen, "action_widgets", None)
+            self.action_slot.addWidget(actions() if callable(actions) else QWidget())
+
         self._build_log_dock()
         self._build_menu()
         self.setStatusBar(QStatusBar())
@@ -179,16 +147,26 @@ class MainWindow(QMainWindow):
         self.go_to(0)
 
     def _navigation(self) -> QWidget:
+        """The single bottom row: Back, the screen's own actions, then Next.
+
+        Each screen used to carry its own action row above this one, leaving
+        two mostly-empty full-width strips at the foot of every page. Screens
+        now hand their buttons here instead.
+        """
         bar = QWidget()
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(12, 6, 12, 12)
+        layout.setContentsMargins(12, 6, 12, 10)
+        layout.setSpacing(8)
 
         self.back_button = QPushButton("Back")
         self.back_button.setAutoDefault(False)
         icons.apply(self.back_button, "back")
         self.back_button.clicked.connect(lambda: self.go_to(self.stack.currentIndex() - 1))
         layout.addWidget(self.back_button)
-        layout.addStretch(1)
+
+        # Each screen's own actions are slotted in here when it is shown.
+        self.action_slot = QStackedWidget()
+        layout.addWidget(self.action_slot, 1)
 
         self.next_button = QPushButton("Next")
         self.next_button.setAutoDefault(False)
@@ -222,6 +200,13 @@ class MainWindow(QMainWindow):
         quit_action.setShortcut(QKeySequence.Quit)
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
+
+        self.info_action = QAction("&Video information…", self)
+        self.info_action.setShortcut("Ctrl+I")
+        self.info_action.setEnabled(False)
+        self.info_action.triggered.connect(self._show_media_info)
+        file_menu.insertAction(save_action, self.info_action)
+        file_menu.insertSeparator(save_action)
 
         view_menu = self.menuBar().addMenu("&View")
         log_action = self.log_dock.toggleViewAction()
@@ -262,9 +247,13 @@ class MainWindow(QMainWindow):
             self._refresh_upload()
 
         self.stack.setCurrentIndex(index)
+        self.action_slot.setCurrentIndex(index)
         self.steps.set_current(index)
         self.back_button.setEnabled(index > 0)
         self.next_button.setEnabled(index < self.stack.count() - 1)
+
+    def _source_changed(self, path: str) -> None:
+        self.info_action.setEnabled(bool(path))
 
     def _cutting_finished(self) -> None:
         self.statusBar().showMessage("Cutting finished.", 5000)
@@ -274,6 +263,11 @@ class MainWindow(QMainWindow):
         self.metadata_screen.refresh()
         self.upload_screen.set_files(self.metadata_screen.prepared_files())
         self.upload_screen.check_login()
+
+    def _show_media_info(self) -> None:
+        from .media_info_dialog import MediaInfoDialog
+
+        MediaInfoDialog(self.state.source_path, self.state.media_info, self).exec()
 
     def _set_theme(self, theme: Theme) -> None:
         """Switch theme and repaint everything that caches its own colours."""

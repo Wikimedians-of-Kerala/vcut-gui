@@ -287,6 +287,8 @@ class PlayerBar(QFrame):
     scrubbed = Signal(int)        # milliseconds
     seek_requested = Signal(float)   # seconds, from the jump box
     clip_clicked = Signal(int)       # index of a marked clip on the timeline
+    mark_in = Signal()               # use the playhead as the clip's start
+    mark_out = Signal()              # use the playhead as the clip's end
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -334,6 +336,27 @@ class PlayerBar(QFrame):
         # -- transport, centred -------------------------------------------
         controls = QHBoxLayout()
         controls.setSpacing(6)
+
+        self.mark_in_button = QPushButton("Set start")
+        self.mark_in_button.setObjectName("markButton")
+        self.mark_in_button.setAutoDefault(False)
+        self.mark_in_button.setToolTip(
+            "Use the current playback position as this clip's start"
+        )
+        icons.apply(self.mark_in_button, "mark-in")
+        self.mark_in_button.clicked.connect(self.mark_in)
+        controls.addWidget(self.mark_in_button)
+
+        self.mark_out_button = QPushButton("Set end")
+        self.mark_out_button.setObjectName("markButton")
+        self.mark_out_button.setAutoDefault(False)
+        self.mark_out_button.setToolTip(
+            "Use the current playback position as this clip's end"
+        )
+        icons.apply(self.mark_out_button, "mark-out")
+        self.mark_out_button.clicked.connect(self.mark_out)
+        controls.addWidget(self.mark_out_button)
+
         controls.addStretch(1)
 
         self.start_button = RoundButton("go-start", "Jump to this clip's start")
@@ -488,6 +511,9 @@ class PlayerBar(QFrame):
         )
         # Orange against the blue groove, so the clip's extent is unmistakable;
         # the other clips sit behind it in a darker blue.
+        for button in (self.mark_in_button, self.mark_out_button):
+            icons.apply(button, "mark-in" if button is self.mark_in_button else "mark-out")
+
         self.scrubber.set_colours(
             "#f57c1f" if dark else "#e06c00",
             "#ff9640" if dark else "#c25500",

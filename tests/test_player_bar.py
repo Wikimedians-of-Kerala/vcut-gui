@@ -223,3 +223,22 @@ def test_clicking_still_seeks_when_it_misses_every_clip(bar, qt_app):
     bar.scrubbed.connect(seen.append)
     _click(bar.scrubber, 120_000)
     assert seen and abs(seen[-1] - 120_000) < 1500
+
+
+# -- marking from the transport --------------------------------------------
+
+
+def test_the_bar_carries_the_marking_buttons(bar):
+    # They belong beside the playhead they read from, not in a row of
+    # their own below it.
+    assert bar.mark_in_button.text() == "Set start"
+    assert bar.mark_out_button.text() == "Set end"
+
+
+def test_marking_buttons_emit_their_signals(bar, qt_app):
+    seen = []
+    bar.mark_in.connect(lambda: seen.append("in"))
+    bar.mark_out.connect(lambda: seen.append("out"))
+    bar.mark_in_button.click()
+    bar.mark_out_button.click()
+    assert seen == ["in", "out"]
