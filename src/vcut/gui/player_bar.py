@@ -37,11 +37,19 @@ class ClipScrubber(QSlider):
     block_clicked = Signal(int)
     #: Any click or drag on the groove, as a position in milliseconds.
     seeked = Signal(int)
+    #: The visible window changed, so the zoom readout needs refreshing.
+    zoom_changed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(Qt.Horizontal, parent)
         self._span: tuple[int, int] | None = None   # the selected clip
         self._blocks: list[tuple[int, int]] = []    # every clip in the list
+        # The visible window, in milliseconds. At 1x this is the whole
+        # recording; zooming in narrows it around the playhead so a cut can
+        # be placed to the frame on a nine-hour file.
+        self._zoom: float = 1.0
+        self._window_start: int = 0
+        self._total: int = 0
         self._band = QColor("#f57c1f")
         self._edge = QColor("#ff9640")
         self._block = QColor("#2d5b9e")
@@ -67,6 +75,60 @@ class ClipScrubber(QSlider):
         ]
         self.update()
 
+    # -- zooming -----------------------------------------------------------
+
+    def set_total(self, milliseconds: int) -> None:
+        """The full length of the recording, which zooming is relative to."""
+        self._total = max(0, int(milliseconds))
+        self._apply_window()
+
+    @property
+    def zoom(self) -> float:
+        return self._zoom
+
+    @property
+    def window(self) -> tuple[int, int]:
+        """The visible range, as (start, end) in milliseconds."""
+        return self._window_start, self._window_start + self._window_length()
+
+    def _window_length(self) -> int:
+        if not self._total:
+            return 0
+        return max(1000, int(self._total / self._zoom))
+
+    def set_zoom(self, zoom: float, *, centre: int | None = None) -> None:
+        """Zoom to a factor, keeping ``centre`` (or the playhead) in view."""
+        zoom = max(1.0, min(2000.0, float(zoom)))
+        if centre is None:
+            centre = self.value()
+        self._zoom = zoom
+        length = self._window_length()
+        self._window_start = int(centre - length / 2)
+        self._apply_window()
+
+    def _apply_window(self) -> None:
+        """Clamp the window to the recording and push it onto the slider."""
+        length = self._window_length()
+        if not self._total or length >= self._total:
+            self._zoom = 1.0
+            self._window_start = 0
+            self.setRange(0, self._total)
+            self.update()
+            return
+
+        self._window_start = max(0, min(self._window_start, self._total - length))
+        self.setRange(self._window_start, self._window_start + length)
+        self.update()
+
+    def ensure_visible(self, position: int) -> None:
+        """Scroll the window so the playhead stays in view while playing."""
+        if self._zoom <= 1.0 or not self._total:
+            return
+        start, end = self.window
+        if start <= position <= end:
+            return
+        self.set_zoom(self._zoom, centre=position)
+
     def set_colours(self, band: str, edge: str, block: str = "") -> None:
         self._band = QColor(band)
         self._edge = QColor(edge)
@@ -89,9 +151,22 @@ class ClipScrubber(QSlider):
         """The timeline position under a pixel on the groove."""
         track = self._groove_rect()
         if track.width() <= 0:
-            return 0
+            return self.minimum()
         fraction = (x - track.left()) / track.width()
-        return int(max(0.0, min(1.0, fraction)) * self.maximum())
+        fraction = max(0.0, min(1.0, fraction))
+        span = self.maximum() - self.minimum()
+        return int(self.minimum() + fraction * span)
+
+    def wheelEvent(self, event) -> None:  # noqa: N802
+        """Ctrl+wheel zooms around the pointer; a plain wheel scrubs."""
+        if event.modifiers() & Qt.ControlModifier:
+            at = self._value_at(int(event.position().x()))
+            factor = 1.25 if event.angleDelta().y() > 0 else 1 / 1.25
+            self.set_zoom(self._zoom * factor, centre=at)
+            self.zoom_changed.emit()
+            event.accept()
+            return
+        super().wheelEvent(event)
 
     def mousePressEvent(self, event) -> None:  # noqa: N802
         """Jump to wherever the groove was clicked.
@@ -145,7 +220,12 @@ class ClipScrubber(QSlider):
         super().paintEvent(event)
 
     def _x_for(self, milliseconds: int, track: QRect) -> int:
-        return track.left() + int(milliseconds * track.width() / self.maximum())
+        """Where a timeline position falls, within the visible window."""
+        span = self.maximum() - self.minimum()
+        if span <= 0:
+            return track.left()
+        fraction = (milliseconds - self.minimum()) / span
+        return track.left() + int(fraction * track.width())
 
     def _paint_blocks(self) -> None:
         """Every clip from the list, behind the selected one."""
@@ -158,9 +238,12 @@ class ClipScrubber(QSlider):
         # played-portion fill behind it.
         top = track.top() - 6
         height = track.height() + 12
+        low, high = self.minimum(), self.maximum()
         for start, end in self._blocks:
-            left = self._x_for(start, track)
-            right = self._x_for(end, track)
+            if end < low or start > high:
+                continue  # outside the zoomed window
+            left = self._x_for(max(start, low), track)
+            right = self._x_for(min(end, high), track)
             painter.drawRect(QRect(left, top, max(2, right - left), height))
         painter.end()
 
@@ -322,6 +405,7 @@ class PlayerBar(QFrame):
         # A click anywhere on the groove seeks, and lands on a clip if it hits one.
         self.scrubber.seeked.connect(self.scrubbed)
         self.scrubber.block_clicked.connect(self.clip_clicked)
+        self.scrubber.zoom_changed.connect(self._update_zoom_label)
         self.scrubber.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         scrub_row.addWidget(self.scrubber, 1)
 
@@ -331,6 +415,24 @@ class PlayerBar(QFrame):
         self.duration_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.duration_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         scrub_row.addWidget(self.duration_label)
+
+        for role, tip, slot in (
+            ("zoom-out", "Zoom the timeline out", self.zoom_out),
+            ("zoom-in", "Zoom the timeline in, around the playhead", self.zoom_in),
+            ("zoom-reset", "Show the whole recording", self.zoom_reset),
+        ):
+            button = RoundButton(role, tip, diameter=28, icon_size=19)
+            button.clicked.connect(slot)
+            scrub_row.addWidget(button)
+            setattr(self, role.replace("-", "_") + "_button", button)
+
+        self.zoom_label = QLabel("1x")
+        self.zoom_label.setObjectName("playerTime")
+        self.zoom_label.setMinimumWidth(34)
+        self.zoom_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.zoom_label.setToolTip("How far the timeline is zoomed in")
+        scrub_row.addWidget(self.zoom_label)
+
         layout.addLayout(scrub_row)
 
         # -- transport, centred -------------------------------------------
@@ -529,6 +631,8 @@ class PlayerBar(QFrame):
 
     def set_position(self, milliseconds: int) -> None:
         if not self.scrubber.isSliderDown():
+            # Follow the playhead when zoomed in, so it does not run off.
+            self.scrubber.ensure_visible(milliseconds)
             self.scrubber.setValue(milliseconds)
         self.position_label.setText(_format(milliseconds))
 
@@ -540,13 +644,67 @@ class PlayerBar(QFrame):
             return
         self.scrubber.set_span(int(start_seconds * 1000), int(end_seconds * 1000))
 
+    # -- zooming -----------------------------------------------------------
+
+    #: Each press moves one step along this scale.
+    ZOOM_STEPS = (1, 2, 4, 8, 16, 32, 64, 128, 256, 512)
+
+    def zoom_in(self) -> None:
+        current = self.scrubber.zoom
+        for step in self.ZOOM_STEPS:
+            if step > current + 0.01:
+                self._set_zoom(step)
+                return
+
+    def zoom_out(self) -> None:
+        current = self.scrubber.zoom
+        for step in reversed(self.ZOOM_STEPS):
+            if step < current - 0.01:
+                self._set_zoom(step)
+                return
+        self._set_zoom(1)
+
+    def zoom_reset(self) -> None:
+        self._set_zoom(1)
+
+    def zoom_to_clip(self, start_seconds: float, end_seconds: float) -> None:
+        """Frame one clip, with a little room either side."""
+        total = self.scrubber._total
+        length = max(1.0, end_seconds - start_seconds)
+        if not total:
+            return
+        # A quarter of the clip's length as padding on each side.
+        window = length * 1.5 * 1000
+        zoom = max(1.0, min(2000.0, total / window))
+        centre = int((start_seconds + end_seconds) / 2 * 1000)
+        self.scrubber.set_zoom(zoom, centre=centre)
+        self._update_zoom_label()
+
+    def _set_zoom(self, zoom: float) -> None:
+        self.scrubber.set_zoom(zoom)
+        self._update_zoom_label()
+
+    def _update_zoom_label(self) -> None:
+        zoom = self.scrubber.zoom
+        self.zoom_label.setText(f"{zoom:.0f}x" if zoom >= 1 else "1x")
+        self.zoom_out_button.setEnabled(zoom > 1.0)
+        self.zoom_reset_button.setEnabled(zoom > 1.0)
+        start, end = self.scrubber.window
+        if zoom > 1.0:
+            self.zoom_label.setToolTip(
+                f"Showing {_format(start)} to {_format(end)}"
+            )
+        else:
+            self.zoom_label.setToolTip("Showing the whole recording")
+
     def set_clip_blocks(self, spans: list[tuple[float, float]]) -> None:
         """Mark every clip from the timecode list on the scrubber."""
         self.scrubber.set_blocks(spans)
 
     def set_duration(self, milliseconds: int) -> None:
-        self.scrubber.setRange(0, max(0, milliseconds))
+        self.scrubber.set_total(max(0, milliseconds))
         self.duration_label.setText(_format(milliseconds))
+        self._update_zoom_label()
 
     def set_enabled(self, enabled: bool) -> None:
         self.scrubber.setEnabled(enabled)

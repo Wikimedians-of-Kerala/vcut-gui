@@ -18,6 +18,11 @@ marked on that timeline in dark blue and the selected one in orange, so the
 shape of the day — and any gap where a session was missed — is visible at a
 glance.
 
+The timeline zooms: on a nine-hour recording a clip is a few pixels wide, so
+the magnifier buttons (or Ctrl+wheel) narrow the view around the playhead,
+and *Zoom to clip* fills the timeline with one session for frame-accurate
+trimming.
+
 Selecting a row seeks to that clip's start; *Go to start* and *Go to end* sit
 beside the list and in the transport, *Preview* plays the opening seconds, and
 the transport steps a second or ten at a time. Any timecode can be typed into
@@ -73,16 +78,26 @@ forced under **View → Theme**.
 
 ## Install
 
+Ready-made packages for Windows and Linux are on the
+[releases page](https://github.com/ranjithsiji/vcut-gui/releases); they need
+no Python. With Python 3.11 or newer already installed:
+
+```sh
+pip install vcut-gui        # or: pipx install vcut-gui
+vcut-gui
+```
+
+From a checkout:
+
 ```sh
 uv venv
 uv pip install -e ".[dev]"
-```
-
-## Run
-
-```sh
 uv run vcut-gui
 ```
+
+FFmpeg has to be installed separately. Full instructions, including how to
+get FFmpeg on each platform and what to do when something goes wrong, are in
+[INSTALL.md](INSTALL.md).
 
 There is also a headless mode:
 

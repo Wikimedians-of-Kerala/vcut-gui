@@ -32,6 +32,7 @@ from ..naming import output_path, unique_path
 from . import icons
 from .progress_dialog import ConfirmJobDialog, JobProgressDialog, JobSummary
 from .state import AppState
+from .table_support import configure_table
 from .widgets import StatusLabel, human_size, row_colour
 from .workers import ConvertJob, ConvertWorker, start
 
@@ -128,7 +129,7 @@ class MetadataScreen(QWidget):
         header.setMinimumSectionSize(34)
         header.setSectionsMovable(True)
         header.setCascadingSectionResizes(True)
-        self.table.setTextElideMode(Qt.ElideRight)
+        configure_table(self.table)
         layout.addWidget(self.table, 1)
 
         buttons = QHBoxLayout()

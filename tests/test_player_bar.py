@@ -242,3 +242,114 @@ def test_marking_buttons_emit_their_signals(bar, qt_app):
     bar.mark_in_button.click()
     bar.mark_out_button.click()
     assert seen == ["in", "out"]
+
+
+# -- zooming the timeline --------------------------------------------------
+
+
+@pytest.fixture
+def long_bar(qt_app):
+    """A bar holding a nine-hour recording, as a conference day would be."""
+    apply_theme(Theme.DARK)
+    bar = PlayerBar()
+    bar.set_duration(9 * 3600 * 1000)
+    return bar
+
+
+def test_the_whole_recording_is_shown_to_begin_with(long_bar):
+    assert long_bar.scrubber.zoom == 1.0
+    start, end = long_bar.scrubber.window
+    assert start == 0
+    assert end == 9 * 3600 * 1000
+
+
+def test_zooming_in_narrows_the_visible_window(long_bar):
+    long_bar.set_position(2 * 3600 * 1000)
+    long_bar.zoom_in()
+    start, end = long_bar.scrubber.window
+    assert long_bar.scrubber.zoom > 1.0
+    assert end - start < 9 * 3600 * 1000
+
+
+def test_zooming_keeps_the_playhead_in_view(long_bar):
+    playhead = 2 * 3600 * 1000
+    long_bar.set_position(playhead)
+    for _ in range(4):
+        long_bar.zoom_in()
+    start, end = long_bar.scrubber.window
+    assert start <= playhead <= end
+
+
+def test_zooming_out_widens_again(long_bar):
+    for _ in range(3):
+        long_bar.zoom_in()
+    narrow = long_bar.scrubber.window
+    long_bar.zoom_out()
+    wide = long_bar.scrubber.window
+    assert (wide[1] - wide[0]) > (narrow[1] - narrow[0])
+
+
+def test_reset_shows_everything_again(long_bar):
+    for _ in range(5):
+        long_bar.zoom_in()
+    long_bar.zoom_reset()
+    assert long_bar.scrubber.zoom == 1.0
+    assert long_bar.scrubber.window == (0, 9 * 3600 * 1000)
+
+
+def test_zoom_never_goes_below_the_whole_recording(long_bar):
+    for _ in range(10):
+        long_bar.zoom_out()
+    assert long_bar.scrubber.zoom == 1.0
+
+
+def test_the_window_cannot_run_past_either_end(long_bar):
+    total = 9 * 3600 * 1000
+    long_bar.set_position(0)
+    long_bar.zoom_in()
+    assert long_bar.scrubber.window[0] >= 0
+    long_bar.zoom_reset()
+    long_bar.set_position(total)
+    long_bar.zoom_in()
+    assert long_bar.scrubber.window[1] <= total
+
+
+def test_zoom_to_clip_frames_that_clip(long_bar):
+    start_s, end_s = 9143, 13015       # 02:32:23 to 03:36:55
+    long_bar.zoom_to_clip(start_s, end_s)
+    start, end = long_bar.scrubber.window
+    assert start <= start_s * 1000
+    assert end_s * 1000 <= end
+    assert long_bar.scrubber.zoom > 1.0
+
+
+def test_the_playhead_pulls_the_window_along(long_bar):
+    long_bar.scrubber.set_zoom(64, centre=1000 * 1000)
+    long_bar.set_position(5000 * 1000)
+    start, end = long_bar.scrubber.window
+    assert start <= 5000 * 1000 <= end
+
+
+def test_the_readout_reports_the_zoom(long_bar):
+    long_bar.zoom_in()
+    assert long_bar.zoom_label.text().endswith("x")
+    long_bar.zoom_reset()
+    assert long_bar.zoom_label.text() == "1x"
+
+
+def test_zoom_out_is_disabled_at_full_view(long_bar):
+    long_bar.zoom_reset()
+    assert not long_bar.zoom_out_button.isEnabled()
+    long_bar.zoom_in()
+    assert long_bar.zoom_out_button.isEnabled()
+
+
+def test_clicking_a_zoomed_timeline_maps_to_the_right_moment(long_bar, qt_app):
+    long_bar.scrubber.resize(600, 26)
+    long_bar.scrubber.set_zoom(16, centre=2 * 3600 * 1000)
+    start, end = long_bar.scrubber.window
+    seen = []
+    long_bar.scrubbed.connect(seen.append)
+    _click(long_bar.scrubber, (start + end) // 2)
+    # Within the window, not scaled against the whole recording.
+    assert seen and start <= seen[-1] <= end

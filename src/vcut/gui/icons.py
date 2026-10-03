@@ -52,6 +52,9 @@ ICON_NAMES: dict[str, str] = {
     "schedule": "mdi6.calendar-text",
     "login": "mdi6.login-variant",
     "refresh": "mdi6.refresh",
+    "zoom-in": "mdi6.magnify-plus-outline",
+    "zoom-out": "mdi6.magnify-minus-outline",
+    "zoom-reset": "mdi6.magnify-close",
     "cancel": "mdi6.close-circle-outline",
     "revert": "mdi6.undo",
     # Navigation and chrome

@@ -72,3 +72,66 @@ def test_the_header_divider_is_drawn_as_a_grip(qt_app):
     sheet = stylesheet(Theme.DARK)
     assert "QHeaderView::section:horizontal" in sheet
     assert "double" in sheet
+
+
+# -- inline editing --------------------------------------------------------
+
+
+def test_cells_use_the_containing_delegate(screens):
+    from vcut.gui.table_support import CellEditorDelegate
+
+    for name, screen in screens.items():
+        assert isinstance(screen.table.itemDelegate(), CellEditorDelegate), name
+
+
+def test_an_editor_stays_inside_the_view(qt_app, screens):
+    from PySide6.QtWidgets import QLineEdit
+
+    from vcut.models import Clip
+
+    screen = screens["verify"]
+    screen.state.set_clips([
+        Clip(programme=f"A very long session title number {i} " * 2,
+             start_time=f"00:{i:02d}:00", end_time=f"00:{i:02d}:30")
+        for i in range(20)
+    ])
+    table = screen.table
+    table.resize(500, 200)
+    table.show()
+    qt_app.processEvents()
+
+    last = table.rowCount() - 1
+    table.setCurrentCell(last, 1)
+    table.scrollToBottom()
+    qt_app.processEvents()
+    table.editItem(table.item(last, 1))
+    qt_app.processEvents()
+
+    editors = table.viewport().findChildren(QLineEdit)
+    assert editors, "no editor was created"
+    geometry = editors[0].geometry()
+    bounds = table.viewport().rect()
+    # The bug this guards: the editor for the bottom row was drawn past the
+    # viewport, over the buttons below, where it could not be used.
+    assert geometry.right() <= bounds.right() + 1
+    assert geometry.bottom() <= bounds.bottom() + 1
+
+
+def test_the_editor_matches_the_row_height(qt_app, screens):
+    from PySide6.QtWidgets import QLineEdit
+
+    from vcut.models import Clip
+
+    screen = screens["verify"]
+    screen.state.set_clips([Clip(programme="A", start_time="0:10", end_time="0:20")])
+    table = screen.table
+    table.show()
+    qt_app.processEvents()
+    table.setCurrentCell(0, 1)
+    table.editItem(table.item(0, 1))
+    qt_app.processEvents()
+
+    editors = table.viewport().findChildren(QLineEdit)
+    assert editors
+    # Generous app-wide padding must not inflate a cell editor.
+    assert editors[0].height() <= table.rowHeight(0) + 4

@@ -28,6 +28,7 @@ from . import icons
 from .player_bar import PlayerBar
 from .progress_dialog import ConfirmJobDialog, JobProgressDialog, JobSummary
 from .state import AppState
+from .table_support import configure_table
 from .widgets import StatusLabel, row_colour
 from .workers import CutJob, CutWorker, start
 
@@ -157,7 +158,7 @@ class VerifyScreen(QWidget):
         header.setMinimumSectionSize(34)
         header.setSectionsMovable(True)
         header.setCascadingSectionResizes(True)
-        self.table.setTextElideMode(Qt.ElideRight)
+        configure_table(self.table)
         layout.addWidget(self.table, 1)
 
         edits = QHBoxLayout()
@@ -217,6 +218,8 @@ class VerifyScreen(QWidget):
              "go-start", self._goto_start),
             ("Go to end", "Jump the player to this clip's end time",
              "go-end", self._goto_end),
+            ("Zoom to clip", "Fill the timeline with just this clip",
+             "zoom-in", self._zoom_to_clip),
         ):
             button = QPushButton(text)
             button.setAutoDefault(False)
@@ -465,6 +468,16 @@ class VerifyScreen(QWidget):
             except TimecodeError:
                 continue  # a row still being typed has nothing to mark
         self.bar.set_clip_blocks(spans)
+
+    def _zoom_to_clip(self) -> None:
+        """Fill the timeline with the selected clip, for precise trimming."""
+        _, clip = self._current_clip()
+        if clip is None:
+            return
+        try:
+            self.bar.zoom_to_clip(clip.start_seconds, clip.end_seconds)
+        except TimecodeError:
+            pass
 
     def _highlight_span(self, clip: Clip | None) -> None:
         """Show the clip's extent on the scrubber."""

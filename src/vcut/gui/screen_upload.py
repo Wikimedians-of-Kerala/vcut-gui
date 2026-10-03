@@ -26,6 +26,7 @@ from ..manifest import build_entry, write_manifest
 from ..upload import check_login, commons_url, validate_for_upload
 from . import icons
 from .state import AppState
+from .table_support import configure_table
 from .widgets import StatusLabel, human_size, row_colour
 from .workers import UploadWorker, start
 
@@ -81,6 +82,7 @@ class UploadScreen(QWidget):
         header.setMinimumSectionSize(34)
         header.setSectionsMovable(True)
         header.setCascadingSectionResizes(True)
+        configure_table(self.table)
         layout.addWidget(self.table, 1)
 
         self.comment_field = QLineEdit(

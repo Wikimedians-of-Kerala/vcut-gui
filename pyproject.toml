@@ -5,12 +5,38 @@ description = "Cut conference recordings into per-session clips with Wikimedia C
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "GPL-3.0-or-later" }
+authors = [
+    { name = "Ranjithsiji" },
+    { name = "Mujeeb Rahman" },
+]
+keywords = ["video", "ffmpeg", "wikimedia", "commons", "conference", "pretalx"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: X11 Applications :: Qt",
+    "Environment :: Win32 (MS Windows)",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Video :: Conversion",
+]
+
 dependencies = [
     "PySide6>=6.7",
     "httpx>=0.27",
     "jinja2>=3.1",
     "qtawesome>=1.3",
 ]
+
+[project.urls]
+Homepage = "https://github.com/ranjithsiji/vcut-gui"
+Source = "https://github.com/ranjithsiji/vcut-gui"
+Issues = "https://github.com/ranjithsiji/vcut-gui/issues"
+Changelog = "https://github.com/ranjithsiji/vcut-gui/blob/master/CHANGELOG.md"
 
 [project.optional-dependencies]
 upload = [

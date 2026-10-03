@@ -13,11 +13,16 @@ import sys
 block_cipher = None
 
 a = Analysis(
-    ["src/vcut/gui/app.py"],
+    # Not src/vcut/gui/app.py directly: PyInstaller runs its entry script as
+    # a top-level module, which breaks that file's relative imports.
+    ["packaging/entry.py"],
     pathex=["src"],
     binaries=[],
     datas=[("src/vcut/gui/logo", "vcut/gui/logo")],
     hiddenimports=[
+        "vcut",
+        "vcut.gui",
+        "vcut.gui.app",
         "vcut.gui.screen_setup",
         "vcut.gui.screen_verify",
         "vcut.gui.screen_metadata",

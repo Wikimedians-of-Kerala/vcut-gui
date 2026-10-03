@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- The timeline zooms, with buttons, Ctrl+wheel, and *Zoom to clip*. At 1x a
+  session in a nine-hour recording is a few pixels wide; zoomed in, cuts can
+  be placed precisely. The playhead keeps itself in view while playing.
+- Fixed the cell editor on the last row being drawn past the bottom of the
+  table, over the buttons below, where it could not be read or used.
+- Ready-made packages for Windows and Linux, with a Linux installer that
+  adds a menu entry, and CI that builds both on a tag.
+- INSTALL.md covers installing on each platform, including FFmpeg.
+
 ## 1.0.1 — 2026-10-03
 
 - Projects: `File > Save project` stores the whole job in a `.vcut` file —
