@@ -109,9 +109,13 @@ def commons_filename(
         room=(session.room if session else clip.room),
     )
 
-    # Drop empty bracketed or dashed fragments left by missing values.
+    # Drop empty bracketed fragments and the separators left stranded beside
+    # them when a value such as the event title is missing.
     name = re.sub(r"\(\s*\)", "", name)
-    name = re.sub(r"\s*-\s*(?=\.|$|\s*-)", " ", name)
+    name = re.sub(r"\s*-\s*-\s*", " - ", name)
+    name = re.sub(r"\s*-\s*(?=\.|$)", "", name)
+    name = re.sub(r"\s*-\s*(?=\()", " ", name)
+    name = re.sub(r"(?<=\()\s*-\s*", "", name)
     name = "".join(" " if ch in _COMMONS_ILLEGAL else ch for ch in name if ord(ch) >= 32)
     name = re.sub(r"\s{2,}", " ", name).strip()
     name = re.sub(r"\s+\.", ".", name)

@@ -12,6 +12,7 @@ import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from .commons import CommonsSettings
 from .eventyay import DEFAULT_BASE_URL, DEFAULT_ORGANISER
 from .ffmpeg import EncodingSettings, OutputFormat
 
@@ -135,6 +136,15 @@ class AppSettings:
         tmp = target.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
         tmp.replace(target)  # atomic, so an interrupted save cannot corrupt it
+
+    def commons_settings(self) -> CommonsSettings:
+        """The Commons options as the renderer wants them."""
+        return CommonsSettings(
+            license=self.commons_license,
+            categories=list(self.commons_categories),
+            template=self.commons_template,
+            date_override=self.date_override,
+        )
 
     @property
     def cache_ttl_seconds(self) -> int:
