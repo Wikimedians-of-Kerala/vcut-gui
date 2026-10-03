@@ -33,6 +33,7 @@ class WorkerSignals(QObject):
     finished = Signal(bool, str)       # whole job: succeeded, summary
     probed = Signal(object)            # MediaInfo
     schedule_loaded = Signal(object, object)  # ScheduleClient | None, error
+    uploaded = Signal(int, str)        # row index, the name it got on Commons
 
 
 class ProbeWorker(QRunnable):
@@ -274,6 +275,8 @@ class UploadWorker(QRunnable):
             done += 1
             self.signals.progress.emit(index, 1.0)
             self.signals.row_finished.emit(index, True, message)
+            if not self._dry_run:
+                self.signals.uploaded.emit(index, prepared.filename)
 
         summary = f"{done} uploaded, {failed} failed"
         if self._cancelled:

@@ -157,6 +157,9 @@ def stylesheet(theme: Theme) -> str:
     """
     colours = DARK if resolve(theme) is Theme.DARK else LIGHT
     border = colours["alternate"] if resolve(theme) is Theme.DARK else "#c7ccd4"
+    # The column-divider grip: brighter than the grid so it is noticed, but
+    # not so bright it competes with the content.
+    grip = "#6d7b92" if resolve(theme) is Theme.DARK else "#8b95a4"
     arrow = _arrow_icon(colours["text"])
     arrow_up = _arrow_icon(colours["text"], size=8, up=True)
     arrow_small = _arrow_icon(colours["text"], size=8)
@@ -283,13 +286,30 @@ def stylesheet(theme: Theme) -> str:
         selection-background-color: {colours["highlight"]};
     }}
     QTableWidget::item {{ padding: 6px 8px; }}
-    QHeaderView::section {{
-        padding: 8px 6px;
+    /* A visible grip on the divider, so it reads as draggable. The right
+       border is drawn thicker and lighter than the grid lines. */
+    QHeaderView::section:horizontal {{
+        padding: 8px 10px;
         border: none;
-        border-right: 1px solid {border};
+        /* An inset pair of lines reads as a grip rather than a plain rule,
+           so it is clear the divider can be dragged. */
+        border-right: 3px double {grip};
         border-bottom: 1px solid {border};
         background: {colours["button"]};
         font-weight: bold;
+    }}
+    QHeaderView::section:horizontal:hover {{
+        background: {colours["alternate"]};
+        border-right: 3px double {colours["highlight"]};
+    }}
+    QHeaderView::section:horizontal:last {{
+        border-right: none;
+    }}
+    QHeaderView::section:vertical {{
+        padding: 4px;
+        border: none;
+        border-bottom: 1px solid {border};
+        background: {colours["button"]};
     }}
     QProgressBar {{
         min-height: 22px;

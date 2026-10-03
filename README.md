@@ -33,7 +33,27 @@ Commons wikitext is generated and shown for editing. This is also where MP4
 cuts are converted into an uploadable format.
 
 **4. Upload** — review what will be sent, upload with Pywikibot, or save the
-metadata into the folder and finish later.
+metadata into the folder and finish later. Clips already on Commons are
+marked with their address and are not offered again.
+
+## Projects
+
+`File > Save project` writes the whole job — the video, every clip and its
+state, the settings, which clips have been checked, and the Commons address
+of anything uploaded — to a single `.vcut` file. Reopening it picks up
+exactly where you left off, which matters because cutting a conference day
+is rarely one sitting.
+
+Paths are stored relative to the project file, so the folder can be moved or
+handed to someone else without breaking.
+
+## Converting one clip at a time
+
+Converting a full day to AV1 is an overnight job. *Convert this clip* on the
+metadata screen does a single clip instead, so one session can be converted,
+checked and uploaded in a few minutes without waiting for the rest. The MP4
+cut and the converted copy are both kept: the MP4 for reviewing, the WebM
+for uploading.
 
 Both long jobs — splitting and converting — confirm the work first, showing
 the clip count, formats and an estimate, then run in a window that reports

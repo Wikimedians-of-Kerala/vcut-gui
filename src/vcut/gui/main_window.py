@@ -18,6 +18,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pathlib import Path
+
 from ..settings import AppSettings
 from . import icons
 from .resources import app_icon, logo_pixmap
@@ -190,8 +192,29 @@ class MainWindow(QMainWindow):
     def _build_menu(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
 
-        save_action = QAction("&Save settings", self)
-        save_action.setShortcut(QKeySequence.Save)
+        new_action = QAction("&New project", self)
+        new_action.setShortcut(QKeySequence.New)
+        new_action.triggered.connect(self._new_project)
+        file_menu.addAction(new_action)
+
+        open_action = QAction("&Open project…", self)
+        open_action.setShortcut(QKeySequence.Open)
+        open_action.triggered.connect(self._open_project)
+        file_menu.addAction(open_action)
+
+        self.save_project_action = QAction("&Save project", self)
+        self.save_project_action.setShortcut(QKeySequence.Save)
+        self.save_project_action.triggered.connect(self._save_project)
+        file_menu.addAction(self.save_project_action)
+
+        save_as_action = QAction("Save project &as…", self)
+        save_as_action.setShortcut(QKeySequence.SaveAs)
+        save_as_action.triggered.connect(lambda: self._save_project(ask=True))
+        file_menu.addAction(save_as_action)
+
+        file_menu.addSeparator()
+
+        save_action = QAction("Save se&ttings", self)
         save_action.triggered.connect(self._save_settings)
         file_menu.addAction(save_action)
 
@@ -263,6 +286,90 @@ class MainWindow(QMainWindow):
         self.metadata_screen.refresh()
         self.upload_screen.set_files(self.metadata_screen.prepared_files())
         self.upload_screen.check_login()
+
+    # -- projects ----------------------------------------------------------
+
+    def _new_project(self) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        if self.state.clips:
+            answer = QMessageBox.question(
+                self, "Start a new project",
+                "Clear the current clips and start again?\n\n"
+                "Anything unsaved will be lost.",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            )
+            if answer != QMessageBox.Yes:
+                return
+        self.state.project_path = ""
+        self.state.set_clips([])
+        self.state.set_source("", None)
+        self._update_title()
+        self.statusBar().showMessage("New project.", 3000)
+
+    def _open_project(self) -> None:
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+        from ..project import PROJECT_SUFFIX, Project, ProjectError
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Open a project", "",
+            f"vcut projects (*{PROJECT_SUFFIX});;All files (*)",
+        )
+        if not path:
+            return
+        try:
+            project = Project.load(path)
+        except ProjectError as exc:
+            QMessageBox.critical(self, "Could not open", str(exc))
+            return
+
+        self.state.load_project(project)
+        self.setup_screen.adopt_project(project)
+        self.verify_screen.set_verified_rows(project.verified)
+        self._update_title()
+        self.statusBar().showMessage(
+            f"Opened {Path(path).name} — {project.summary()}.", 6000
+        )
+
+    def _save_project(self, *, ask: bool = False) -> None:
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+        from ..project import PROJECT_SUFFIX
+
+        path = self.state.project_path
+        if ask or not path:
+            suggested = path or self._suggested_project_name()
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Save the project", suggested,
+                f"vcut projects (*{PROJECT_SUFFIX});;All files (*)",
+            )
+            if not path:
+                return
+
+        self.setup_screen.apply_to_settings()
+        project = self.state.to_project()
+        project.verified = set(self.verify_screen.verified_rows())
+        try:
+            written = project.save(path)
+        except OSError as exc:
+            QMessageBox.critical(self, "Could not save", str(exc))
+            return
+
+        self.state.project_path = str(written)
+        self._update_title()
+        self.statusBar().showMessage(f"Saved {written.name}.", 4000)
+
+    def _suggested_project_name(self) -> str:
+        if self.state.source_path:
+            return str(Path(self.state.source_path).with_suffix(".vcut"))
+        return "project.vcut"
+
+    def _update_title(self) -> None:
+        name = Path(self.state.project_path).stem if self.state.project_path else ""
+        self.setWindowTitle(
+            f"{name} — vcut" if name else "vcut — conference video cutter"
+        )
 
     def _show_media_info(self) -> None:
         from .media_info_dialog import MediaInfoDialog

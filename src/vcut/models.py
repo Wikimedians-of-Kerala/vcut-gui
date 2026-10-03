@@ -87,6 +87,15 @@ class Clip:
     progress: float = 0.0
     message: str = ""
     output_path: str = ""
+    #: Where the uploadable copy lives, once converted out of MP4.
+    converted_path: str = ""
+    #: Filled in once the clip reaches Commons, so a reopened project knows
+    #: what has already been published and where it went.
+    commons_filename: str = ""
+    commons_url: str = ""
+    uploaded_at: str = ""
+    #: The description as last edited, kept so it survives a reopen.
+    wikitext: str = ""
     # Metadata resolved from the conference schedule, when available.
     metadata: dict = field(default_factory=dict)
     # Columns present in the CSV that vcut does not model directly.
@@ -140,3 +149,12 @@ class Clip:
     @property
     def is_valid(self) -> bool:
         return not self.validate()
+
+    @property
+    def is_uploaded(self) -> bool:
+        return bool(self.commons_url)
+
+    @property
+    def uploadable_path(self) -> str:
+        """The file that would be uploaded: the converted copy if there is one."""
+        return self.converted_path or self.output_path

@@ -115,23 +115,25 @@ class MetadataScreen(QWidget):
         self.table.itemChanged.connect(self._item_changed)
 
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(COL_SELECT, QHeaderView.ResizeToContents)
-        # The clip title identifies the row, so it gets the slack and a floor
-        # that the other columns cannot squeeze away.
-        header.setSectionResizeMode(COL_CLIP, QHeaderView.Stretch)
-        header.setSectionResizeMode(COL_FILE, QHeaderView.Interactive)
-        header.setSectionResizeMode(COL_NAME, QHeaderView.Interactive)
-        header.setSectionResizeMode(COL_META, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(COL_NOTES, QHeaderView.Interactive)
-        header.setMinimumSectionSize(150)
-        header.resizeSection(COL_FILE, 150)
-        header.resizeSection(COL_NAME, 190)
-        header.resizeSection(COL_NOTES, 170)
+        # All columns draggable; a Stretch or ResizeToContents section cannot
+        # be resized by hand.
+        for column in range(len(COLUMNS)):
+            header.setSectionResizeMode(column, QHeaderView.Interactive)
+        header.setStretchLastSection(False)
+        for column, width in (
+            (COL_SELECT, 34), (COL_CLIP, 220), (COL_FILE, 150),
+            (COL_NAME, 200), (COL_META, 110), (COL_NOTES, 180),
+        ):
+            header.resizeSection(column, width)
+        header.setMinimumSectionSize(34)
+        header.setSectionsMovable(True)
+        header.setCascadingSectionResizes(True)
         self.table.setTextElideMode(Qt.ElideRight)
         layout.addWidget(self.table, 1)
 
         buttons = QHBoxLayout()
         for text, role, slot in (
+            ("Convert this clip", "convert", self._convert_current),
             ("Fetch metadata", "refresh", self._fetch_metadata),
             ("Select all", "select-all", lambda: self._set_all(True)),
             ("Select none", "select-none", lambda: self._set_all(False)),
@@ -268,7 +270,8 @@ class MetadataScreen(QWidget):
             session = self.state.session_for(clip)
             prepared = prepare_file(
                 clip, session=session, settings=commons_settings,
-                event_info=self.state.event_info, local_path=clip.output_path,
+                event_info=self.state.event_info,
+                local_path=clip.uploadable_path,
             )
             if row in self._edited:
                 prepared.wikitext = self._edited[row]
@@ -281,7 +284,12 @@ class MetadataScreen(QWidget):
 
             self.table.setItem(row, COL_CLIP, QTableWidgetItem(clip.programme))
 
-            local = Path(clip.output_path).name if clip.output_path else "not cut yet"
+            if clip.converted_path:
+                local = Path(clip.converted_path).name
+            elif clip.output_path:
+                local = Path(clip.output_path).name
+            else:
+                local = "not cut yet"
             file_item = QTableWidgetItem(local)
             self.table.setItem(row, COL_FILE, file_item)
 
@@ -393,7 +401,22 @@ class MetadataScreen(QWidget):
 
     # -- conversion --------------------------------------------------------
 
-    def _convert(self) -> None:
+    def _convert_current(self) -> None:
+        """Convert only the highlighted clip.
+
+        Converting a whole day is an overnight job; doing one clip at a time
+        means it can be converted, checked and uploaded in a single sitting.
+        """
+        row = self.table.currentRow()
+        if not (0 <= row < len(self.state.clips)):
+            QMessageBox.information(
+                self, "No clip selected", "Select a clip in the list first."
+            )
+            return
+        self._convert(rows=[row])
+
+    def _convert(self, rows: list[int] | None = None) -> None:
+        """Convert the selected clips, or just ``rows`` when given."""
         if self._worker is not None:
             return
 
@@ -407,15 +430,25 @@ class MetadataScreen(QWidget):
         settings = self.state.settings
         convert_settings = settings.encoding.with_format(target_format)
 
+        wanted = set(rows) if rows is not None else None
         jobs: list[ConvertJob] = []
+        skipped_missing = 0
         for index, clip in enumerate(self.state.clips):
-            if not clip.selected or not clip.output_path:
+            if wanted is not None:
+                if index not in wanted:
+                    continue
+            elif not clip.selected:
+                continue
+            if not clip.output_path:
+                skipped_missing += 1
                 continue
             source = Path(clip.output_path)
             if not source.is_file():
                 continue
             if source.suffix.lstrip(".") == target_format.extension:
                 continue  # already in the right format
+            if clip.converted_path and Path(clip.converted_path).is_file():
+                continue  # converted already
 
             target = output_path(
                 clip, index + 1, settings.output_directory,
@@ -436,11 +469,17 @@ class MetadataScreen(QWidget):
             ))
 
         if not jobs:
-            QMessageBox.information(
-                self, "Nothing to convert",
-                "No selected clip needs converting. Cut the clips first, or they "
-                "are already in the chosen format.",
-            )
+            if rows is not None and skipped_missing:
+                QMessageBox.information(
+                    self, "Not cut yet",
+                    "That clip has not been cut yet. Split the video first.",
+                )
+            else:
+                QMessageBox.information(
+                    self, "Nothing to convert",
+                    "No selected clip needs converting. Cut the clips first, or "
+                    "they are already in the chosen format.",
+                )
             return
 
         total_seconds = sum(job.duration for job in jobs)
@@ -530,8 +569,8 @@ class MetadataScreen(QWidget):
             self._dialog.set_finished(index, succeeded, message)
         job = getattr(self, "_jobs_by_index", {}).get(index)
         if succeeded and job and 0 <= index < len(self.state.clips):
-            # Point the clip at its uploadable file.
-            self.state.clips[index].output_path = job.output
+            # Keep both: the MP4 for review, the converted copy for upload.
+            self.state.clips[index].converted_path = job.output
         self._updating = True
         item = self.table.item(index, COL_NOTES)
         if item:
@@ -588,8 +627,9 @@ class MetadataScreen(QWidget):
         selected = [c for c in clips if c.selected]
         uploadable = sum(
             1 for c in selected
-            if c.output_path and Path(c.output_path).suffix.lstrip(".") != "mp4"
-            and Path(c.output_path).is_file()
+            if c.uploadable_path
+            and Path(c.uploadable_path).suffix.lstrip(".") != "mp4"
+            and Path(c.uploadable_path).is_file()
         )
         self.summary.show_message(
             f"{len(selected)} selected · {uploadable} ready for Commons",
@@ -601,6 +641,6 @@ class MetadataScreen(QWidget):
         result = []
         for row, prepared in sorted(self._prepared.items()):
             if row < len(self.state.clips) and self.state.clips[row].selected:
-                prepared.local_path = self.state.clips[row].output_path
+                prepared.local_path = self.state.clips[row].uploadable_path
                 result.append((row, prepared))
         return result

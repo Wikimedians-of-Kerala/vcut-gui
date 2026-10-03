@@ -226,7 +226,8 @@ def prepare_file(
     """Build the complete Commons payload for one clip."""
     settings = settings or CommonsSettings()
     event_info = event_info or {}
-    path = local_path or clip.output_path
+    # The converted copy is what gets uploaded, when there is one.
+    path = local_path or clip.uploadable_path
 
     wikitext, warnings = render_description(
         clip, session=session, settings=settings, event_info=event_info

@@ -250,6 +250,34 @@ class SetupScreen(QWidget):
         form.addRow("", self.encoder_status)
         return group
 
+    def adopt_project(self, project) -> None:
+        """Show a freshly opened project's choices in the form."""
+        settings = self.state.settings
+        if project.source_path:
+            self.source_picker.field.setText(project.source_path)
+            self._source_chosen(project.source_path)
+        if project.csv_path:
+            self.csv_picker.field.setText(project.csv_path)
+        if project.output_directory:
+            self._output_is_automatic = False
+            self.output_picker.field.setText(project.output_directory)
+        self.event_field.setText(settings.event_slug)
+        self.offline_box.setChecked(settings.offline)
+        self.filename_field.setText(settings.filename_template)
+        self.subfolder_field.setText(settings.subfolder_template)
+        self.separate_box.setChecked(settings.separate_by_format)
+
+        index = self.format_box.findData(settings.encoding.output_format)
+        if index >= 0:
+            self.format_box.setCurrentIndex(index)
+        index = self.cut_box.findData(settings.encoding.cut_mode)
+        if index >= 0:
+            self.cut_box.setCurrentIndex(index)
+        self.quality_spin.setValue(settings.encoding.crf)
+        self.audio_field.setText(settings.encoding.audio_bitrate)
+        self.overwrite_box.setChecked(settings.encoding.overwrite)
+        self.dry_run_box.setChecked(settings.dry_run)
+
     def restyle(self) -> None:
         """Rebuild button icons after a theme change."""
         for button in self.findChildren(QPushButton):

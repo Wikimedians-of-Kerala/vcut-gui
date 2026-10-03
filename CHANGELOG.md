@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- Projects: `File > Save project` stores the whole job in a `.vcut` file —
+  clips, their state, settings, checked marks, and the Commons address of
+  anything uploaded — so work can be picked up across days.
+- Clips can be converted one at a time rather than only as an overnight
+  batch, so a session can be converted, checked and uploaded in one sitting.
+- The MP4 cut and the converted copy are now tracked separately, instead of
+  the conversion replacing the original.
+- Uploaded clips record their Commons address, are shown as already
+  published, and are not offered for upload again.
+- Table columns can be resized and reordered on every screen; previously
+  most were fixed to their contents and could not be dragged at all.
+
 ## 0.1.0 — 2026-10-03
 
 First release.

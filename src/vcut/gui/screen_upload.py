@@ -70,13 +70,17 @@ class UploadScreen(QWidget):
         self.table.itemChanged.connect(self._item_changed)
         self.table.cellDoubleClicked.connect(self._open_on_commons)
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(COL_SELECT, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(COL_FILE, QHeaderView.Interactive)
-        header.setSectionResizeMode(COL_NAME, QHeaderView.Stretch)
-        header.setSectionResizeMode(COL_SIZE, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(COL_STATUS, QHeaderView.Interactive)
-        header.resizeSection(COL_FILE, 230)
-        header.resizeSection(COL_STATUS, 200)
+        for column in range(len(COLUMNS)):
+            header.setSectionResizeMode(column, QHeaderView.Interactive)
+        header.setStretchLastSection(False)
+        for column, width in (
+            (COL_SELECT, 34), (COL_FILE, 240), (COL_NAME, 300),
+            (COL_SIZE, 90), (COL_STATUS, 200),
+        ):
+            header.resizeSection(column, width)
+        header.setMinimumSectionSize(34)
+        header.setSectionsMovable(True)
+        header.setCascadingSectionResizes(True)
         layout.addWidget(self.table, 1)
 
         self.comment_field = QLineEdit(
@@ -164,12 +168,14 @@ class UploadScreen(QWidget):
         self._updating = True
         self.table.setRowCount(len(files))
 
-        for row, (_index, prepared) in enumerate(files):
+        for row, (index, prepared) in enumerate(files):
             problems = validate_for_upload(prepared)
+            clip = self.state.clips[index] if index < len(self.state.clips) else None
+            already = bool(clip and clip.is_uploaded)
 
             select = QTableWidgetItem()
             select.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-            blocked = bool(problems)
+            blocked = bool(problems) or already
             select.setCheckState(Qt.Unchecked if blocked else Qt.Checked)
             if blocked:
                 self._skip.add(row)
@@ -188,9 +194,19 @@ class UploadScreen(QWidget):
             size_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.table.setItem(row, COL_SIZE, size_item)
 
-            status = QTableWidgetItem("; ".join(problems) if problems else "ready")
+            if already:
+                text = f"on Commons — {clip.commons_filename}"
+            elif problems:
+                text = "; ".join(problems)
+            else:
+                text = "ready"
+            status = QTableWidgetItem(text)
+            if already:
+                status.setToolTip(
+                    f"{clip.commons_url}\n\nDouble-click to open it on Commons."
+                )
             self.table.setItem(row, COL_STATUS, status)
-            self._colour_row(row, bool(problems))
+            self._colour_row(row, bool(problems) and not already, uploaded=already)
 
         self._updating = False
         self._refresh_summary()
@@ -230,8 +246,11 @@ class UploadScreen(QWidget):
     def _open_on_commons(self, row: int, _column: int) -> None:
         if row >= len(self._files):
             return
-        _, prepared = self._files[row]
-        if prepared.filename:
+        index, prepared = self._files[row]
+        clip = self.state.clips[index] if index < len(self.state.clips) else None
+        if clip and clip.commons_url:
+            QDesktopServices.openUrl(QUrl(clip.commons_url))
+        elif prepared.filename:
             QDesktopServices.openUrl(QUrl(commons_url(prepared.filename)))
 
     # -- manifest ----------------------------------------------------------
@@ -327,6 +346,7 @@ class UploadScreen(QWidget):
             dry_run=dry_run,
         )
         self._worker.signals.row_finished.connect(self._row_finished)
+        self._worker.signals.uploaded.connect(self._record_upload)
         self._worker.signals.log.connect(self.state.log)
         self._worker.signals.finished.connect(self._all_finished)
 
@@ -340,6 +360,25 @@ class UploadScreen(QWidget):
             f"{'Checking' if dry_run else 'Uploading'} {len(batch)} files…", "info"
         )
         start(self._worker)
+
+    def _record_upload(self, row: int, filename: str) -> None:
+        """Remember where a clip ended up on Commons.
+
+        Saved with the project, so reopening it shows what is already
+        published rather than offering to upload it again.
+        """
+        from datetime import datetime, timezone
+
+        if not (0 <= row < len(self._files)):
+            return
+        index, _prepared = self._files[row]
+        if not (0 <= index < len(self.state.clips)):
+            return
+        clip = self.state.clips[index]
+        clip.commons_filename = filename
+        clip.commons_url = commons_url(filename)
+        clip.uploaded_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        self.state.log(f"Uploaded: {clip.commons_url}")
 
     def _row_finished(self, row: int, succeeded: bool, message: str) -> None:
         self._completed += 1

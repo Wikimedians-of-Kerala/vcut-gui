@@ -140,15 +140,23 @@ class VerifyScreen(QWidget):
         self.table.itemChanged.connect(self._item_changed)
 
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(COL_NAME, QHeaderView.Stretch)
-        for column in (COL_SELECT, COL_START, COL_END, COL_LENGTH,
-                       COL_CODE, COL_OK):
-            header.setSectionResizeMode(column, QHeaderView.ResizeToContents)
-        # Status messages can be long; let them be resized rather than letting
-        # them squeeze the title column down to nothing.
-        header.setSectionResizeMode(COL_STATUS, QHeaderView.Interactive)
-        header.resizeSection(COL_STATUS, 170)
-        header.setMinimumSectionSize(50)
+        # Every column is draggable: ResizeToContents and Stretch sections
+        # cannot be resized by hand at all, which is why the dividers looked
+        # inert. The title column still takes the slack as the window grows.
+        for column in range(len(COLUMNS)):
+            header.setSectionResizeMode(column, QHeaderView.Interactive)
+        header.setStretchLastSection(False)
+        # Narrow enough to fit the default pane without a scrollbar; the
+        # user can widen any of them, and the title column takes the slack
+        # when the window grows.
+        for column, width in (
+            (COL_SELECT, 32), (COL_NAME, 210), (COL_START, 76), (COL_END, 76),
+            (COL_LENGTH, 76), (COL_CODE, 72), (COL_OK, 62), (COL_STATUS, 150),
+        ):
+            header.resizeSection(column, width)
+        header.setMinimumSectionSize(34)
+        header.setSectionsMovable(True)
+        header.setCascadingSectionResizes(True)
         self.table.setTextElideMode(Qt.ElideRight)
         layout.addWidget(self.table, 1)
 
@@ -256,6 +264,14 @@ class VerifyScreen(QWidget):
         self.split_button.clicked.connect(self.start_cutting)
         layout.addWidget(self.split_button)
         return bar
+
+    def verified_rows(self) -> set[int]:
+        """Which clips have been checked, for saving with the project."""
+        return set(self._verified)
+
+    def set_verified_rows(self, rows) -> None:
+        self._verified = set(rows)
+        self.reload()
 
     def restyle(self) -> None:
         """Repaint what does not follow the palette on its own."""
