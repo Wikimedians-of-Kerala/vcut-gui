@@ -140,3 +140,19 @@ def test_saving_does_not_destroy_the_old_file_on_failure(tmp_path):
     make_project(tmp_path, uploaded=True).save(tmp_path / "day1")
     assert written.read_text(encoding="utf-8") != original
     assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_a_hand_written_commons_name_survives(tmp_path):
+    from vcut.models import Clip
+    from vcut.project import Project
+
+    clip = Clip(programme="A talk", start_time="00:00:00", end_time="00:10:00")
+    clip.commons_name_override = "The name agreed with the community"
+
+    target = tmp_path / "job.vcut"
+    Project(clips=[clip]).save(target)
+
+    reopened = Project.load(target)
+    assert reopened.clips[0].commons_name_override == (
+        "The name agreed with the community"
+    )

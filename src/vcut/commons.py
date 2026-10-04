@@ -107,6 +107,17 @@ class CommonsFile:
         return bool(self.local_path) and bool(self.filename) and bool(self.wikitext)
 
 
+def _with_extension(name: str, extension: str) -> str:
+    """Make sure a hand-written name ends in the file's real extension.
+
+    Commons refuses an upload whose name does not match the file, and the
+    extension is not something the user should have to remember -- or have
+    to change when a clip is converted.
+    """
+    stem = Path(name).stem if Path(name).suffix else name
+    return f"{stem.strip()}.{extension}"
+
+
 def commons_filename(
     clip: Clip,
     *,
@@ -261,13 +272,19 @@ def prepare_file(
             "MP4 cannot be uploaded to Commons — convert this clip to WebM first"
         )
 
-    filename = commons_filename(
-        clip,
-        session=session,
-        event_title=event_info.get("title", ""),
-        extension=extension,
-        template=settings.filename_template,
-    )
+    # A name chosen by hand wins over the template. The extension still
+    # comes from the actual file, since Commons rejects a mismatch.
+    override = (clip.commons_name_override or "").strip()
+    if override:
+        filename = _with_extension(override, extension)
+    else:
+        filename = commons_filename(
+            clip,
+            session=session,
+            event_title=event_info.get("title", ""),
+            extension=extension,
+            template=settings.filename_template,
+        )
 
     if path and not Path(path).is_file():
         warnings.append("the clip file does not exist yet")

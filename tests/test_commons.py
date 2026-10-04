@@ -173,3 +173,75 @@ def test_the_tool_category_can_be_turned_off():
         clip, settings=CommonsSettings(tag_with_tool=False)
     )
     assert TOOL_CATEGORY not in text
+
+
+# -- naming a file by hand -------------------------------------------------
+
+
+def test_a_hand_written_name_wins_over_the_template(tmp_path):
+    """The name on Commons is often not the name on disk.
+
+    A talk title the generator truncated, or wording the community has
+    agreed on, has to be typeable without renaming the local file.
+    """
+    from pathlib import Path
+
+    from vcut.commons import CommonsSettings, prepare_file
+    from vcut.models import Clip
+
+    video = tmp_path / "09-Schoolwiki.webm"
+    video.write_bytes(b"x")
+
+    clip = Clip(programme="Schoolwiki", start_time="00:00:00", end_time="00:10:00")
+    clip.output_path = str(video)
+    clip.commons_name_override = "A much better name"
+
+    prepared = prepare_file(clip, settings=CommonsSettings())
+    assert prepared.filename == "A much better name.webm"
+    # The file on disk keeps its own name.
+    assert Path(prepared.local_path).name == "09-Schoolwiki.webm"
+
+
+def test_the_extension_follows_the_real_file(tmp_path):
+    # Commons refuses an upload whose name does not match the file, and the
+    # extension changes when a clip is converted.
+    from vcut.commons import CommonsSettings, prepare_file
+    from vcut.models import Clip
+
+    video = tmp_path / "clip.webm"
+    video.write_bytes(b"x")
+    clip = Clip(programme="A talk", start_time="00:00:00", end_time="00:10:00")
+    clip.output_path = str(video)
+
+    clip.commons_name_override = "Named without an extension"
+    assert prepare_file(clip, settings=CommonsSettings()).filename.endswith(".webm")
+
+    clip.commons_name_override = "Named with the wrong one.mp4"
+    assert prepare_file(clip, settings=CommonsSettings()).filename == (
+        "Named with the wrong one.webm"
+    )
+
+
+def test_no_override_means_the_generated_name(tmp_path):
+    from vcut.commons import CommonsSettings, prepare_file
+    from vcut.models import Clip
+
+    video = tmp_path / "clip.webm"
+    video.write_bytes(b"x")
+    clip = Clip(programme="A talk", start_time="00:00:00", end_time="00:10:00")
+    clip.output_path = str(video)
+
+    assert "A talk" in prepare_file(clip, settings=CommonsSettings()).filename
+
+
+def test_a_blank_override_is_ignored(tmp_path):
+    from vcut.commons import CommonsSettings, prepare_file
+    from vcut.models import Clip
+
+    video = tmp_path / "clip.webm"
+    video.write_bytes(b"x")
+    clip = Clip(programme="A talk", start_time="00:00:00", end_time="00:10:00")
+    clip.output_path = str(video)
+    clip.commons_name_override = "   "
+
+    assert "A talk" in prepare_file(clip, settings=CommonsSettings()).filename

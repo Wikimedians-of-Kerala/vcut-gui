@@ -94,6 +94,11 @@ class Clip:
     commons_filename: str = ""
     commons_url: str = ""
     uploaded_at: str = ""
+    #: A name chosen by hand for Commons, overriding the generated one.
+    #: The file on disk keeps its own name: this is only what the file is
+    #: called on Commons, which is often worded differently -- a talk title
+    #: the generator truncated, or a name the community has agreed on.
+    commons_name_override: str = ""
     #: The description as last edited, kept so it survives a reopen.
     wikitext: str = ""
     # Metadata resolved from the conference schedule, when available.

@@ -102,6 +102,7 @@ class Project:
             # Where the converted, uploadable file lives, when it differs.
             "converted_path": _relative(clip.converted_path, base),
             "commons_filename": clip.commons_filename,
+            "commons_name_override": clip.commons_name_override,
             "commons_url": clip.commons_url,
             "uploaded_at": clip.uploaded_at,
             "wikitext": clip.wikitext,
@@ -189,6 +190,7 @@ class Project:
         clip.output_path = _absolute(raw.get("output_path", ""), base)
         clip.converted_path = _absolute(raw.get("converted_path", ""), base)
         clip.commons_filename = raw.get("commons_filename", "")
+        clip.commons_name_override = raw.get("commons_name_override", "")
         clip.commons_url = raw.get("commons_url", "")
         clip.uploaded_at = raw.get("uploaded_at", "")
         clip.wikitext = raw.get("wikitext", "")

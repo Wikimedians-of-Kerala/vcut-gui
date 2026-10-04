@@ -295,7 +295,23 @@ class MetadataScreen(QWidget):
             file_item = QTableWidgetItem(local)
             self.table.setItem(row, COL_FILE, file_item)
 
-            self.table.setItem(row, COL_NAME, QTableWidgetItem(prepared.filename))
+            name_item = QTableWidgetItem(prepared.filename)
+            name_item.setFlags(name_item.flags() | Qt.ItemIsEditable)
+            if clip.commons_name_override.strip():
+                name_item.setToolTip(
+                    "Named by hand. Clear the cell to go back to the "
+                    "generated name."
+                )
+                font = name_item.font()
+                font.setItalic(True)
+                name_item.setFont(font)
+            else:
+                name_item.setToolTip(
+                    "Generated from the title. Type here to name the file "
+                    "something else on Commons; the file on disk keeps its "
+                    "own name."
+                )
+            self.table.setItem(row, COL_NAME, name_item)
 
             if session:
                 meta = "from schedule"
@@ -326,12 +342,35 @@ class MetadataScreen(QWidget):
                 item.setBackground(brush)
 
     def _item_changed(self, item: QTableWidgetItem) -> None:
-        if self._updating or item.column() != COL_SELECT:
+        if self._updating:
             return
         row = item.row()
-        if 0 <= row < len(self.state.clips):
+        if not (0 <= row < len(self.state.clips)):
+            return
+
+        if item.column() == COL_SELECT:
             self.state.clips[row].selected = item.checkState() == Qt.Checked
             self._refresh_summary()
+            return
+
+        if item.column() == COL_NAME:
+            self._name_edited(row, item.text())
+
+    def _name_edited(self, row: int, text: str) -> None:
+        """Take a hand-written Commons name, or go back to the generated one.
+
+        Emptying the cell clears the override rather than setting an empty
+        name, which is the obvious way to undo it.
+        """
+        clip = self.state.clips[row]
+        typed = text.strip()
+
+        prepared = self._prepared.get(row)
+        generated = getattr(prepared, "filename", "") if prepared else ""
+
+        # Typing the generated name back is the same as not overriding it.
+        clip.commons_name_override = "" if typed in ("", generated) else typed
+        self.refresh()
 
     def _set_all(self, selected: bool) -> None:
         self._updating = True
