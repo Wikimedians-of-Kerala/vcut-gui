@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.2.0 — 2026-10-04
+
+Uploading.
+
+### Fixed
+
+- **A browser sign-in was invisible to the upload screen.** Check reported
+  "Not signed in to Commons yet" and Upload did nothing, while the login
+  window said the same session could upload — the check asked Pywikibot and
+  nothing else, so the only route an account with a passkey or two-factor
+  sign-in has was never consulted. Either route now counts. A working bot
+  password still wins, since it does not expire, but when neither works the
+  expired session is reported rather than a generic "not signed in": it
+  names the account and says what to do.
+
+### New
+
+- **Uploads show where each file landed.** The address on Commons has its
+  own column, filled in as each file is accepted and shown for anything
+  already published. It was recorded and logged before, which meant going
+  looking for it. Double-clicking a row still opens the file.
+- **Uploading gets a progress window**, the same one splitting and
+  converting use: the account, the total size, how many files, and which one
+  is in flight.
+- **Files are marked as coming from vcut**, three ways, because they are
+  different mechanisms. Every description carries
+  `[[Category:Uploaded with vcut]]`, after the subject categories since
+  those are what a reader wants first. The default edit summary is "Uploaded
+  with vcut" on every route — previously the three disagreed and two did not
+  name the tool. And the change tag `Vcut` is sent when Commons will accept
+  it: a tag only exists once an administrator defines it at Special:Tags,
+  and sending an undefined one fails the whole upload, so this is checked
+  against the wiki once per session rather than assumed.
+
 ## 1.1.0 — 2026-10-04
 
 Documentation, resource management, and the encoding fixes that came out of
