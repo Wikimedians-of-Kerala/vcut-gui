@@ -81,3 +81,59 @@ def test_commons_url_escapes_the_filename():
     url = commons_url("A Talk (XY12).webm")
     assert url.startswith("https://commons.wikimedia.org/wiki/File:")
     assert " " not in url
+
+
+# -- signing in ------------------------------------------------------------
+
+
+def test_a_browser_session_counts_as_being_signed_in(monkeypatch, tmp_path):
+    """Checking Pywikibot alone reported a browser login as signed out.
+
+    An account with a passkey or two-factor sign-in can only log in through
+    the wiki's own page, so the browser session is the only route it has.
+    The upload screen said "Not signed in to Commons yet" while the login
+    window said the session could upload.
+    """
+    from vcut import upload
+    from vcut.gui import browser_login
+
+    session = browser_login.Session(
+        username="Someone", cookies={"commonswikiSession": "x"}
+    )
+    monkeypatch.setattr(browser_login, "load_session", lambda: session)
+    monkeypatch.setattr(browser_login, "can_upload", lambda _s: True)
+
+    status = upload.check_login()
+    assert status.logged_in
+    assert status.method == "browser"
+    assert status.username == "Someone"
+
+
+def test_an_expired_browser_session_says_so(monkeypatch):
+    from vcut import upload
+    from vcut.gui import browser_login
+
+    session = browser_login.Session(
+        username="Someone", cookies={"commonswikiSession": "x"}
+    )
+    monkeypatch.setattr(browser_login, "load_session", lambda: session)
+    monkeypatch.setattr(browser_login, "can_upload", lambda _s: False)
+
+    status = upload.check_login()
+    assert not status.logged_in
+    assert "expired" in status.message.lower()
+    # And it must say what to do about it.
+    assert "sign in" in status.message.lower()
+
+
+def test_a_broken_session_does_not_break_the_check(monkeypatch):
+    # A corrupt stored session must not stop the screen reporting anything.
+    from vcut import upload
+    from vcut.gui import browser_login
+
+    def explode():
+        raise ValueError("corrupt")
+
+    monkeypatch.setattr(browser_login, "load_session", explode)
+    status = upload.check_login()
+    assert status.message

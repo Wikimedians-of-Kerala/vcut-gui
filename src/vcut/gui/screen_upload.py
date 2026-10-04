@@ -26,13 +26,14 @@ from ..manifest import build_entry, write_manifest
 from ..upload import check_login, commons_url, validate_for_upload
 from . import icons
 from .theme import SPACE_EDGE, SPACE_ROW, SPACE_TIGHT
+from .progress_dialog import JobProgressDialog
 from .state import AppState
 from .table_support import configure_table
 from .widgets import StatusLabel, human_size, row_colour
 from .workers import UploadWorker, start
 
-COLUMNS = ("", "File", "Commons name", "Size", "Status")
-COL_SELECT, COL_FILE, COL_NAME, COL_SIZE, COL_STATUS = range(5)
+COLUMNS = ("", "File", "Commons name", "Size", "Status", "On Commons")
+COL_SELECT, COL_FILE, COL_NAME, COL_SIZE, COL_STATUS, COL_URL = range(6)
 
 
 class UploadScreen(QWidget):
@@ -42,6 +43,8 @@ class UploadScreen(QWidget):
         super().__init__(parent)
         self.state = state
         self._worker: UploadWorker | None = None
+        self._dialog: JobProgressDialog | None = None
+        self._account = ""
         self._files: list[tuple[int, object]] = []
         self._updating = False
         self._skip: set[int] = set()
@@ -85,7 +88,7 @@ class UploadScreen(QWidget):
         header.setStretchLastSection(False)
         for column, width in (
             (COL_SELECT, 34), (COL_FILE, 240), (COL_NAME, 300),
-            (COL_SIZE, 90), (COL_STATUS, 200),
+            (COL_SIZE, 90), (COL_STATUS, 200), (COL_URL, 260),
         ):
             header.resizeSection(column, width)
         header.setMinimumSectionSize(34)
@@ -168,6 +171,7 @@ class UploadScreen(QWidget):
 
     def check_login(self) -> None:
         status = check_login()
+        self._account = status.username
         if status.logged_in:
             self.login_status.show_message(status.message, "good")
         elif status.available:
@@ -222,6 +226,14 @@ class UploadScreen(QWidget):
                     f"{clip.commons_url}\n\nDouble-click to open it on Commons."
                 )
             self.table.setItem(row, COL_STATUS, status)
+
+            # The address on Commons, for anything already published. Shown
+            # rather than only logged, so it can be copied or opened.
+            address = clip.commons_url if (clip and clip.is_uploaded) else ""
+            url_item = QTableWidgetItem(address)
+            if address:
+                url_item.setToolTip(f"{address}\n\nDouble-click to open.")
+            self.table.setItem(row, COL_URL, url_item)
             self._colour_row(row, bool(problems) and not already, uploaded=already)
 
         self._updating = False
@@ -353,7 +365,14 @@ class UploadScreen(QWidget):
             if row not in self._skip
         ]
         if not batch:
+            QMessageBox.information(
+                self, "Nothing to upload",
+                "No file is ticked. Files that Commons cannot accept, or that "
+                "are already uploaded, are unticked automatically.",
+            )
             return
+
+        account = getattr(self, "_account", "") or "the signed-in account"
 
         self._worker = UploadWorker(
             batch,
@@ -375,7 +394,29 @@ class UploadScreen(QWidget):
         self.summary.show_message(
             f"{'Checking' if dry_run else 'Uploading'} {len(batch)} files…", "info"
         )
+
+        # The same window splitting and converting use. Uploading a day of
+        # sessions is minutes of work over the network, and a thin bar
+        # behind the table does not say which file is in flight or what
+        # went wrong with the one that failed.
+        total = sum(
+            Path(prepared.local_path).stat().st_size
+            for _row, prepared in batch
+            if prepared.local_path and Path(prepared.local_path).is_file()
+        )
+        where = "Checking" if dry_run else f"Uploading to Commons as {account}"
+        self._dialog = JobProgressDialog(
+            "Checking the files" if dry_run else "Uploading to Commons",
+            [prepared.filename for _row, prepared in batch],
+            parent=self,
+            note=f"{where} · {human_size(total)} in {len(batch)} files",
+        )
+        for position, (row, _prepared) in enumerate(batch):
+            self._dialog.track(row, position)
+        self._dialog.cancelled.connect(self._cancel)
+
         start(self._worker)
+        self._dialog.exec()
 
     def _record_upload(self, row: int, filename: str) -> None:
         """Remember where a clip ended up on Commons.
@@ -396,9 +437,20 @@ class UploadScreen(QWidget):
         clip.uploaded_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
         self.state.log(f"Uploaded: {clip.commons_url}")
 
+        # Put the address in the table as each file lands, rather than making
+        # the user go looking in the log for it.
+        self._updating = True
+        item = QTableWidgetItem(clip.commons_url)
+        item.setToolTip(f"{clip.commons_url}\n\nDouble-click to open.")
+        self.table.setItem(row, COL_URL, item)
+        self._updating = False
+
     def _row_finished(self, row: int, succeeded: bool, message: str) -> None:
         self._completed += 1
         self.progress.setValue(self._completed)
+        if self._dialog is not None:
+            self._dialog.set_progress(row, 1.0)
+            self._dialog.set_finished(row, succeeded, message)
         self._updating = True
         item = self.table.item(row, COL_STATUS)
         if item:
@@ -408,6 +460,8 @@ class UploadScreen(QWidget):
 
     def _all_finished(self, succeeded: bool, summary: str) -> None:
         self._worker = None
+        if self._dialog is not None:
+            self._dialog.complete(summary)
         self.progress.setVisible(False)
         self.cancel_button.setVisible(False)
         self.upload_button.setEnabled(True)

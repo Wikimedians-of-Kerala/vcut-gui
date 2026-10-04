@@ -27,13 +27,16 @@ class UploadError(RuntimeError):
 
 @dataclass
 class LoginStatus:
-    """Whether Pywikibot is installed and logged in."""
+    """Whether Commons can be uploaded to, by whichever route."""
 
     available: bool = False
     logged_in: bool = False
     username: str = ""
     site: str = ""
     message: str = ""
+    #: "pywikibot" or "browser" -- which sign-in is being used. A browser
+    #: session is what a passkey or two-factor account ends up with.
+    method: str = ""
 
 
 def _use_generated_config() -> None:
@@ -60,15 +63,75 @@ def pywikibot_available() -> bool:
     return True
 
 
+def _browser_login() -> LoginStatus | None:
+    """A signed-in browser session, if one was saved and still works.
+
+    Accounts with a passkey or two-factor sign-in can only log in through
+    the wiki's own page, so this is the route they end up on. Checking
+    Pywikibot alone reported them as signed out while the login window said
+    they were signed in.
+    """
+    try:
+        from .gui import browser_login
+    except ImportError:
+        return None
+
+    try:
+        session = browser_login.load_session()
+        if session is None:
+            return None
+        if not browser_login.can_upload(session):
+            return LoginStatus(
+                available=True,
+                method="browser",
+                username=session.username,
+                site="commons:commons",
+                message=(
+                    f"The browser session for {session.username} has expired. "
+                    f"Sign in again, or use a bot password."
+                ),
+            )
+        return LoginStatus(
+            available=True, logged_in=True, method="browser",
+            username=session.username, site="commons:commons",
+            message=f"Signed in to Commons as {session.username} (browser session).",
+        )
+    except Exception:  # noqa: BLE001 - a bad session must not break the check
+        return None
+
+
 def check_login(family: str = "commons", code: str = "commons") -> LoginStatus:
-    """Report whether we can upload, without raising."""
+    """Report whether we can upload, without raising.
+
+    Either route counts: a bot password through Pywikibot, or a browser
+    session saved by the login window.
+    """
+    browser = _browser_login()
+    if browser is not None and browser.logged_in:
+        return browser
+
     if not pywikibot_available():
+        if browser is not None:
+            return browser
         return LoginStatus(
             message=(
                 "Pywikibot is not installed. Install it with "
                 "'uv pip install pywikibot' to enable uploading."
             )
         )
+
+    # A working bot password beats a stale browser session, so Pywikibot is
+    # tried next. Its answer is kept only if it is actually signed in: when
+    # neither route works, an expired session is the more useful thing to
+    # say, since it names the account and what went wrong with it.
+    pywikibot_status = _pywikibot_login(family, code)
+    if pywikibot_status.logged_in or browser is None:
+        return pywikibot_status
+    return browser
+
+
+def _pywikibot_login(family: str, code: str) -> LoginStatus:
+    """Whether a bot password is configured and accepted."""
 
     from .auth import load as load_credentials
 
@@ -88,7 +151,8 @@ def check_login(family: str = "commons", code: str = "commons") -> LoginStatus:
             )
             return LoginStatus(available=True, site=str(site), message=hint)
         return LoginStatus(
-            available=True, logged_in=True, username=str(user), site=str(site),
+            available=True, logged_in=True, method="pywikibot",
+            username=str(user), site=str(site),
             message=f"Logged in to {site} as {user}.",
         )
     except Exception as exc:  # noqa: BLE001 - pywikibot raises many types
