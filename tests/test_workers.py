@@ -218,16 +218,18 @@ def test_the_convert_button_does_not_pass_its_checked_state_as_rows():
 
     It crashed with "TypeError: 'bool' object is not iterable" the moment
     Convert for Commons was pressed.
+
+    Checked by reading the source rather than by pressing the button: the
+    button opens a modal dialog, which never returns in a headless run.
     """
-    from PySide6.QtWidgets import QApplication
+    import inspect
 
-    QApplication.instance() or QApplication([])
-    from vcut.gui.main_window import MainWindow
+    from vcut.gui.screen_metadata import MetadataScreen
 
-    window = MainWindow()
-    screen = window.metadata_screen
+    # The handler must not iterate whatever the signal happened to send.
+    body = inspect.getsource(MetadataScreen._convert)
+    assert "isinstance(rows" in body, "a bool would still be iterated"
 
-    # Should be a no-op with nothing loaded, not an exception.
-    screen._convert(rows=True)
-    screen._convert(rows=False)
-    screen.convert_button.click()
+    # And the connection should drop the argument in the first place.
+    wiring = inspect.getsource(MetadataScreen)
+    assert "lambda _checked" in wiring

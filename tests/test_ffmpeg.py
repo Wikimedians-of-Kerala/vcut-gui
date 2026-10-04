@@ -273,11 +273,24 @@ def test_the_captured_log_is_bounded(tmp_path):
 
 
 def test_a_signal_is_explained_rather_than_shown_as_a_number():
+    """A bare "exited with code -11" tells the user nothing to act on.
+
+    The named advice is POSIX-only: Windows has no SIGKILL or SIGSEGV, and
+    a child never reports one, so there the generic form is correct.
+    """
+    import signal
+
     from vcut.ffmpeg import _describe_signal
 
-    assert "memory" in _describe_signal(9).lower()        # SIGKILL
-    assert "crash" in _describe_signal(11).lower()        # SIGSEGV
-    # An unknown signal still produces something readable.
+    if hasattr(signal, "SIGKILL"):
+        assert "memory" in _describe_signal(9).lower()     # SIGKILL
+    if hasattr(signal, "SIGSEGV"):
+        assert "crash" in _describe_signal(11).lower()     # SIGSEGV
+
+    # Whatever the platform, every signal gets something readable.
+    for number in (9, 11, 15, 99):
+        message = _describe_signal(number)
+        assert message and message[0].isupper() or "ffmpeg" in message
     assert "signal" in _describe_signal(99).lower()
 
 
