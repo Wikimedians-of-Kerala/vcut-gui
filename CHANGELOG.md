@@ -1,5 +1,62 @@
 # Changelog
 
+## 1.1.0 — 2026-10-04
+
+Documentation, resource management, and the encoding fixes that came out of
+cutting a real nine-hour conference recording.
+
+### New
+
+- **A help window**: `Help > How to use vcut`, or F1. Twelve topics covering
+  each step, the timecode list, signing in, and what to do when something
+  goes wrong. It opens on the topic for the screen you are looking at, and
+  searches the body text as well as the headings, so "keyframe" finds the
+  page that explains keyframes.
+- **Two written guides**: [docs/GUIDE.md](docs/GUIDE.md) follows a day's
+  recording from start to finish, and
+  [docs/BUILDING.md](docs/BUILDING.md) covers building the Linux and
+  Windows packages.
+- **Encoding is budgeted against the machine.** Memory, cores and free disk
+  are measured, and the per-encode cost with them: SVT-AV1 holds 950 MB at
+  720p and 1.2 GB at 1080p, VP9 about a third of that. A computer with no
+  room is told so before anything starts, with what to do about it, instead
+  of starting a job the kernel will kill.
+- **The player closes while encoding**, handing 86 MB to ffmpeg, and shows
+  a grey panel saying why rather than going black. It reopens where it left
+  off afterwards.
+- **Stream copy now says what it costs on your file.** It is hundreds of
+  times faster — 442 ms against 113 s for one 22-minute clip — and the note
+  reports the real drift measured from the recording's own keyframes rather
+  than warning vaguely about "several seconds".
+
+### Fixed
+
+Splitting and converting both failed on a long recording, in ways that gave
+the user nothing to act on.
+
+- **Converting to WebM failed with "ffmpeg exited with code -11".** With
+  hardware acceleration on, an H.264 GPU encoder was used whatever the
+  target format, so both AV1 and VP9 produced the same command: H.264 into
+  a WebM container, which ffmpeg refuses outright. The requested codec was
+  silently discarded. A hardware encoder is now used only when it produces
+  the codec being asked for, so an H.264 GPU still accelerates MP4 cuts
+  while WebM falls back to the software encoder. Measured afterwards on the
+  same clip: VP9 125s, AV1 13.5s, both successful.
+- **Splitting froze part-way through with the processor idle.** ffmpeg
+  writes steadily to stderr, a pipe holds about 64 KB, and nothing drained
+  it until the process had already exited — so ffmpeg blocked on its next
+  write and the two waited on each other. A nine-hour source hit this every
+  time, leaving a half-written file with no index. stderr is now drained
+  while the job runs, and progress moved from a pipe to a file, which has no
+  buffer to fill.
+- **Pressing Convert for Commons crashed** with "'bool' object is not
+  iterable": the button handed its checked state over as the list of rows.
+- A failed run no longer leaves a 0-byte file behind. Every command carries
+  `-n` so real work is never overwritten, which meant those leftovers
+  blocked every retry until the folder was cleared by hand.
+- A signal is explained rather than shown as a bare number: -11 now says
+  ffmpeg crashed, -9 that it ran out of memory.
+
 ## 1.0.3 — 2026-10-04
 
 - First release built by CI on GitHub, which is also the first Windows
