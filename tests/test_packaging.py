@@ -248,6 +248,12 @@ def test_actions_are_not_on_deprecated_node():
         assert "actions/upload-artifact@v4" not in workflow, name
         for stale in ("astral-sh/setup-uv@v5", "astral-sh/setup-uv@v6"):
             assert stale not in workflow, f"{name}: {stale}"
+        # setup-uv publishes moving major tags only up to v7; v8 and later
+        # exist as exact versions, so "@v10" is a 404 and fails the job
+        # before anything runs.
+        assert "astral-sh/setup-uv@v10\n" not in workflow, name
+        assert "astral-sh/setup-uv@v8\n" not in workflow, name
+        assert "astral-sh/setup-uv@v9\n" not in workflow, name
 
 
 def test_the_version_is_declared_once_and_agrees():
@@ -294,3 +300,28 @@ def test_the_tests_only_import_declared_dependencies():
                 undeclared.setdefault(module, set()).add(path.name)
 
     assert not undeclared, f"undeclared test imports: {undeclared}"
+
+
+def test_every_action_reference_looks_resolvable():
+    """A tag that does not exist fails the job before a single step runs,
+    and the error names only the action. These are the forms that exist."""
+    import re
+
+    known = {
+        "actions/checkout": {"v4", "v5"},
+        "actions/upload-artifact": {"v4", "v5"},
+        "actions/download-artifact": {"v4", "v5", "v6"},
+        "softprops/action-gh-release": {"v1", "v2"},
+    }
+    exact = re.compile(r"^v\d+\.\d+\.\d+$")
+
+    for name in (".github/workflows/release.yml", ".github/workflows/tests.yml"):
+        for ref in re.findall(r"uses:\s*(\S+)", read(name)):
+            repo, _, tag = ref.partition("@")
+            assert tag, f"{name}: {ref} is unpinned"
+            if repo in known:
+                assert tag in known[repo], f"{name}: unknown tag {ref}"
+            else:
+                # Anything else must be pinned to an exact version, since a
+                # moving major tag may simply not be published.
+                assert exact.match(tag), f"{name}: {ref} should pin an exact version"
