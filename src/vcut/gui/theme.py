@@ -395,6 +395,16 @@ def stylesheet(theme: Theme) -> str:
         font-family: monospace;
         font-size: 11px;
     }}
+    /* Stands in for the video while encoding, when the player has let go
+       of the file. Grey rather than black, so it reads as "deliberately
+       empty" instead of "the picture failed". */
+    QLabel#videoPlaceholder {{
+        background: {colours["alternate"]};
+        color: {colours["disabled"]};
+        border: 1px solid {border};
+        border-radius: 6px;
+        font-size: 12px;
+    }}
     QLabel#screenHeading {{
         font-size: 18px;
         font-weight: bold;

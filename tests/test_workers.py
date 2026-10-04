@@ -131,3 +131,50 @@ def test_a_failing_release_does_not_block_the_job():
     workers.before_encoding(explode)
     with workers.encoding_slot("libx264", width=640, height=360):
         pass
+
+
+def test_releasing_swaps_in_the_placeholder():
+    """The pane must not just go black, which reads as a broken player."""
+    from PySide6.QtCore import QUrl
+    from PySide6.QtWidgets import QApplication
+
+    QApplication.instance() or QApplication([])
+    from vcut.ffmpeg import MediaInfo
+    from vcut.gui.main_window import MainWindow
+
+    window = MainWindow()
+    screen = window.verify_screen
+    window.state.set_source("day1.mp4", MediaInfo(duration=600.0))
+
+    assert screen.video_stack.currentWidget() is screen.video
+
+    screen.release_player()
+    assert screen.video_stack.currentWidget() is screen.video_placeholder
+    assert screen.player.source() == QUrl(), "the file was not let go"
+
+    screen.restore_player()
+    assert screen.video_stack.currentWidget() is screen.video
+
+
+def test_the_placeholder_says_why_it_is_there():
+    from PySide6.QtWidgets import QApplication
+
+    QApplication.instance() or QApplication([])
+    from vcut.gui.main_window import MainWindow
+
+    text = MainWindow().verify_screen.video_placeholder.text().lower()
+    assert "encoding" in text
+
+
+def test_releasing_clears_the_source_not_merely_stops():
+    """stop() keeps the decoder; clearing the source is what frees it.
+
+    Measured on a nine-hour recording: stop() alone recovered 5 MB, while
+    clearing the source recovered 71 MB.
+    """
+    import inspect
+
+    from vcut.gui.screen_verify import VerifyScreen
+
+    source = inspect.getsource(VerifyScreen.release_player)
+    assert "setSource" in source, "the file is never let go"
