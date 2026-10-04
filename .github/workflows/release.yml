@@ -19,6 +19,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libegl1 libgl1 libxkbcommon-x11-0 \
             libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0
+      - name: Install Python
+        run: uv python install 3.12
       - name: Build
         run: ./packaging/build-linux.sh
       - uses: actions/upload-artifact@v4
@@ -31,6 +33,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+      - name: Install Python
+        run: uv python install 3.12
       - name: Build
         run: powershell -ExecutionPolicy Bypass -File packaging\build-windows.ps1
       - uses: actions/upload-artifact@v4
@@ -63,3 +67,12 @@ jobs:
         with:
           files: artifacts/**/*
           generate_release_notes: true
+          body: |
+            See [CHANGELOG.md](../../blob/master/CHANGELOG.md) for what
+            changed.
+
+            **FFmpeg is not bundled.** Install it separately — see
+            [INSTALL.md](../../blob/master/INSTALL.md).
+
+            The Windows executable is unsigned, so SmartScreen warns on
+            first run: **More info → Run anyway**.

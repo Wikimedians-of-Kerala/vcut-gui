@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 LOGIN_URL = "https://commons.wikimedia.org/wiki/Special:UserLogin"
 API_URL = "https://commons.wikimedia.org/w/api.php"
 #: Wikimedia asks tools to identify themselves.
-USER_AGENT = "vcut-gui (https://gitlab.com/ranjithsiji/vcut-gui)"
+USER_AGENT = "vcut-gui (https://github.com/Wikimedians-of-Kerala/vcut-gui)"
 
 #: Cookies MediaWiki sets once a login has completed.
 SESSION_COOKIES = ("commonswikiUserID", "commonswikiUserName", "commonswikiSession")

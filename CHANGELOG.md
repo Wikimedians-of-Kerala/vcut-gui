@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The project is on GitHub at
+  [Wikimedians-of-Kerala/vcut-gui](https://github.com/Wikimedians-of-Kerala/vcut-gui),
+  which is where the release packages are built. GitHub gives public
+  repositories free Windows runners; GitLab's free tier has none, and the
+  Windows `.exe` cannot be cross-compiled from Linux. Every address in the
+  documentation, the packaging metadata and the Commons user agent now
+  points there.
+
 - A help window: `Help > How to use vcut`, or F1. Twelve topics covering
   each step, the timecode list, signing in, and what to do when something
   goes wrong. It opens on the topic for the screen you are looking at, and

@@ -60,8 +60,8 @@ Commons-ready files. vcut will still cut to MP4.
 ## 1. Ready-made package
 
 Download the archive for your system from the
-[releases page](https://github.com/ranjithsiji/vcut-gui/releases), unpack it
-anywhere, and run it. No Python needed.
+[releases page](https://github.com/Wikimedians-of-Kerala/vcut-gui/releases),
+unpack it anywhere, and run it. No Python needed.
 
 ### Windows
 
@@ -139,7 +139,7 @@ pipx install vcut-gui
 ## 3. From source
 
 ```sh
-git clone https://github.com/ranjithsiji/vcut-gui.git
+git clone https://github.com/Wikimedians-of-Kerala/vcut-gui.git
 cd vcut-gui
 uv venv
 uv pip install -e ".[dev]"

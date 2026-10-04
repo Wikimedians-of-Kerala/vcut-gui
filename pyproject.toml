@@ -34,10 +34,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ranjithsiji/vcut-gui"
-Source = "https://github.com/ranjithsiji/vcut-gui"
-Issues = "https://github.com/ranjithsiji/vcut-gui/issues"
-Changelog = "https://github.com/ranjithsiji/vcut-gui/blob/master/CHANGELOG.md"
+Homepage = "https://github.com/Wikimedians-of-Kerala/vcut-gui"
+Source = "https://github.com/Wikimedians-of-Kerala/vcut-gui"
+Issues = "https://github.com/Wikimedians-of-Kerala/vcut-gui/issues"
+Changelog = "https://github.com/Wikimedians-of-Kerala/vcut-gui/blob/master/CHANGELOG.md"
 
 [project.optional-dependencies]
 upload = [

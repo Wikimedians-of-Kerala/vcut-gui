@@ -131,8 +131,8 @@ forced under **View → Theme**.
 ## Install
 
 Ready-made packages for Windows and Linux are on the
-[releases page](https://github.com/ranjithsiji/vcut-gui/releases); they need
-no Python. With Python 3.11 or newer already installed:
+[releases page](https://github.com/Wikimedians-of-Kerala/vcut-gui/releases);
+they need no Python. With Python 3.11 or newer already installed:
 
 ```sh
 pip install vcut-gui        # or: pipx install vcut-gui

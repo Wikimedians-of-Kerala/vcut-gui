@@ -62,3 +62,36 @@ def test_readme_points_at_both_guides():
     readme = read("README.md")
     assert "docs/GUIDE.md" in readme
     assert "docs/BUILDING.md" in readme
+
+
+# -- project addresses -----------------------------------------------------
+
+REPO = "https://github.com/Wikimedians-of-Kerala/vcut-gui"
+
+
+def test_no_stale_repository_addresses():
+    # The project moved; a leftover address sends people to a repository
+    # that is not this one.
+    for name in ("README.md", "INSTALL.md", "pyproject.toml",
+                 "docs/GUIDE.md", "docs/BUILDING.md",
+                 "src/vcut/gui/browser_login.py"):
+        text = read(name)
+        assert "ranjithsiji" not in text, name
+        assert "gitlab.com" not in text, name
+
+
+def test_the_user_agent_names_this_repository():
+    # Wikimedia asks tools to identify themselves, and a wrong address there
+    # misidentifies the tool rather than merely being untidy.
+    source = read("src/vcut/gui/browser_login.py")
+    assert REPO in source
+
+
+def test_packaging_metadata_points_at_the_repository():
+    import tomllib
+
+    data = tomllib.loads(read("pyproject.toml"))
+    urls = data["project"]["urls"]
+    assert urls["Homepage"] == REPO
+    for value in urls.values():
+        assert value.startswith(REPO), value

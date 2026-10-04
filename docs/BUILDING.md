@@ -145,7 +145,27 @@ careful person refuses to click through.
 
 `.github/workflows/release.yml` builds all three artifacts — Linux, Windows
 and the wheel — on GitHub's runners. This is the practical answer to
-PyInstaller's lack of cross-compilation.
+PyInstaller's lack of cross-compilation: you almost certainly do not have
+both machines, and GitHub does.
+
+### Why GitHub and not GitLab
+
+The project is on GitHub specifically because of the Windows build.
+
+| | Linux runners | Windows runners |
+| --- | --- | --- |
+| GitHub Actions, public repository | Free | **Free** |
+| GitHub Actions, private repository | 2,000 min/month | Free minutes count **double** |
+| GitLab CI, free tier | 400 min/month | **None** |
+
+GitLab's free tier has no Windows shared runners at all — producing a
+`.exe` there means registering and maintaining a Windows machine of your
+own as a runner. For a volunteer project that is a standing cost for one
+build artifact, so GitHub it is.
+
+This matters only for the `.exe`. If you ever move the project, the Linux
+package and the wheel build anywhere; the Windows job is the part that needs
+a host offering free Windows runners.
 
 It runs when you **push a version tag**:
 
