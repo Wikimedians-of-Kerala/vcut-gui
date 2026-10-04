@@ -80,11 +80,22 @@ jobs:
             echo "::error::Qt WebEngine is back in the bundle (see docs/BUILDING.md)"
             exit 1
           fi
+      - name: Say where the package is
+        run: |
+          {
+            echo "### Linux package"
+            echo
+            echo "\`$(basename dist/vcut-gui-linux.tar.gz)\` — $(du -h dist/vcut-gui-linux.tar.gz | cut -f1)"
+            echo
+            echo "Download it from **Artifacts** at the bottom of this page."
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v5
         with:
           name: vcut-gui-linux
           path: dist/vcut-gui-linux.tar.gz
           if-no-files-found: error
+          retention-days: 90
+          compression-level: 0   # already a .tar.gz; recompressing wastes minutes
 
   windows:
     runs-on: windows-latest
@@ -119,11 +130,25 @@ jobs:
               throw "Qt WebEngine is back in the bundle (see docs/BUILDING.md)"
             }
           } finally { $zip.Dispose() }
+      - name: Say where the package is
+        shell: pwsh
+        run: |
+          $mb = [math]::Round((Get-Item dist\vcut-gui-windows.zip).Length / 1MB, 1)
+          @(
+            "### Windows package"
+            ""
+            "``vcut-gui-windows.zip`` — $mb MB"
+            ""
+            "Download it from **Artifacts** at the bottom of this page."
+            "GitHub wraps artifacts in a zip, so you get a zip inside a zip."
+          ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@v5
         with:
           name: vcut-gui-windows
           path: dist/vcut-gui-windows.zip
           if-no-files-found: error
+          retention-days: 90
+          compression-level: 0   # already a .zip
 
   wheel:
     runs-on: ubuntu-latest
@@ -141,6 +166,7 @@ jobs:
           name: vcut-gui-wheel
           path: dist/*
           if-no-files-found: error
+          retention-days: 90
 
   release:
     needs: [linux, windows, wheel]
@@ -159,7 +185,8 @@ jobs:
         run: |
           sha="${{ github.sha }}"
           echo "Checking Tests for $sha"
-          conclusion=$(gh run list --workflow Tests --commit "$sha"             --limit 1 --json conclusion --jq '.[0].conclusion // "missing"')
+          conclusion=$(gh run list --workflow Tests --commit "$sha" \
+            --limit 1 --json conclusion --jq '.[0].conclusion // "missing"')
           echo "Tests concluded: $conclusion"
           if [ "$conclusion" != "success" ]; then
             echo "::error::Tests did not pass for $sha (got: $conclusion)."

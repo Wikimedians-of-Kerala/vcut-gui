@@ -194,15 +194,31 @@ A tag publishes them to the **Releases** page. Every other run keeps them as
 workflow artifacts instead, which are easy to miss:
 
 1. **Actions** tab.
-2. Click the workflow run.
+2. Click the run — it must be a **Build release packages** run, not a
+   **Tests** run.
 3. Scroll to the bottom — **Artifacts**.
 
 There you will find `vcut-gui-linux`, `vcut-gui-windows` and
 `vcut-gui-wheel`, each a zip around the package. GitHub always wraps
 artifacts in a zip, so the Linux one downloads as a zip containing the
-`.tar.gz`.
+`.tar.gz`, and the Windows one a zip inside a zip.
 
 Artifacts expire after 90 days; releases do not.
+
+> **No Artifacts section?** Then that run built nothing, and there are only
+> two ways that happens.
+>
+> **You are looking at a Tests run.** Tests never produces artifacts — it
+> only runs the suite. Check the workflow name at the top of the page.
+>
+> **The build was skipped.** Build release packages only runs for a tag, a
+> change under `packaging/` or to the spec or dependencies, or a manual
+> run. A commit touching only `src/` or `tests/` does not build, by
+> design — see [When it runs](#when-it-runs) — so there is nothing to
+> download.
+>
+> Either way the fix is the same: **Actions → Build release packages →
+> Run workflow**. It needs no commit.
 
 ### When it runs
 
