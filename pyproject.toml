@@ -74,6 +74,9 @@ packages = ["src/vcut"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "needs_real_ffmpeg: the test runs FFmpeg rather than only building a command line",
+]
 
 [tool.ruff]
 line-length = 100

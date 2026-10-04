@@ -25,7 +25,26 @@ uv pip install --quiet --python .venv-build/bin/python -e . pyinstaller
 echo "==> Building"
 # --log-level WARN keeps CI logs readable; the INFO firehose buries the one
 # line that matters. Failures still print in full.
-.venv-build/bin/pyinstaller --noconfirm --clean --log-level WARN vcut-gui.spec
+#
+# The log is kept because PyInstaller only *warns* about a library it cannot
+# resolve, then builds a bundle that dies on import. That cost several CI
+# runs with libpulse: it is present on a developer's desktop, so the bundle
+# looked fine locally and failed on a bare machine.
+build_log=$(mktemp)
+trap 'rm -f "$build_log"' EXIT
+.venv-build/bin/pyinstaller --noconfirm --clean --log-level WARN vcut-gui.spec \
+    2>&1 | tee "$build_log"
+
+if grep -q "Library not found" "$build_log"; then
+    echo >&2
+    echo "error: PyInstaller could not resolve these libraries:" >&2
+    grep -o "could not resolve '[^']*'" "$build_log" | sort -u | sed 's/^/  /' >&2
+    echo >&2
+    echo "The bundle would start on this machine and fail on one without" >&2
+    echo "them. Install the matching -dev or runtime packages and rebuild;" >&2
+    echo "see docs/BUILDING.md." >&2
+    exit 1
+fi
 
 if [ ! -x dist/vcut-gui/vcut-gui ]; then
     echo "error: PyInstaller did not produce dist/vcut-gui/vcut-gui" >&2
