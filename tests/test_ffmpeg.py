@@ -279,3 +279,48 @@ def test_a_signal_is_explained_rather_than_shown_as_a_number():
     assert "crash" in _describe_signal(11).lower()        # SIGSEGV
     # An unknown signal still produces something readable.
     assert "signal" in _describe_signal(99).lower()
+
+
+def test_an_empty_output_is_removed_after_a_failure(tmp_path):
+    """A killed ffmpeg leaves a 0-byte file that then blocks every retry.
+
+    The commands carry "-n" so real work is never clobbered, which means an
+    empty leftover makes the next attempt fail with "already exists".
+    """
+    import sys
+
+    from vcut.ffmpeg import run_command
+
+    target = tmp_path / "out.webm"
+    script = tmp_path / "fail.py"
+    script.write_text(
+        "import sys\n"
+        "open(sys.argv[-1], 'w').close()\n"   # create it, write nothing
+        "sys.exit(1)\n",
+        encoding="utf-8",
+    )
+
+    code = run_command([sys.executable, str(script), str(target)], 1.0)
+
+    assert code == 1
+    assert not target.exists(), "the empty output was left behind"
+
+
+def test_a_real_output_survives_a_failure(tmp_path):
+    # Only an *empty* file is leftover rubbish; a partial encode might still
+    # be worth keeping, and deleting it would destroy the user's work.
+    import sys
+
+    from vcut.ffmpeg import run_command
+
+    target = tmp_path / "partial.webm"
+    script = tmp_path / "half.py"
+    script.write_text(
+        "import sys\n"
+        "open(sys.argv[-1], 'w').write('some real bytes')\n"
+        "sys.exit(1)\n",
+        encoding="utf-8",
+    )
+
+    run_command([sys.executable, str(script), str(target)], 1.0)
+    assert target.exists() and target.stat().st_size > 0

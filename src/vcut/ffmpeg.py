@@ -683,7 +683,31 @@ def run_command(
     code = process.returncode
     if code is not None and code < 0 and on_log:
         on_log(_describe_signal(-code))
+
+    # A killed ffmpeg leaves the output it had opened but never wrote. That
+    # empty file then blocks every retry, because the commands carry "-n" to
+    # avoid clobbering real work -- so the next attempt fails with "already
+    # exists" and the user is stuck until they clear the folder by hand.
+    if code != 0:
+        _remove_empty_output(command, on_log)
     return code
+
+
+def _remove_empty_output(
+    command: list[str],
+    on_log: Callable[[str], None] | None = None,
+) -> None:
+    """Delete the output file if the run left it empty."""
+    if not command:
+        return
+    target = Path(command[-1])
+    try:
+        if target.is_file() and target.stat().st_size == 0:
+            target.unlink()
+            if on_log:
+                on_log(f"Removed the empty {target.name} left by the failure.")
+    except OSError:
+        pass
 
 
 def _follow_progress(

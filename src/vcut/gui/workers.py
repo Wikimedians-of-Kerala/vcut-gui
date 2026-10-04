@@ -10,6 +10,10 @@ from __future__ import annotations
 import traceback
 from dataclasses import dataclass
 
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
+
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 
 from ..commons import CommonsFile
@@ -107,6 +111,13 @@ class CutWorker(QRunnable):
         self._cancelled = True
 
     def run(self) -> None:
+        try:
+            with encoding_slot():
+                self._cut_all()
+        except EncodingBusy as exc:
+            self.signals.finished.emit(False, str(exc))
+
+    def _cut_all(self) -> None:
         from pathlib import Path
 
         done = failed = 0
@@ -191,6 +202,13 @@ class ConvertWorker(QRunnable):
         self._cancelled = True
 
     def run(self) -> None:
+        try:
+            with encoding_slot():
+                self._convert_all()
+        except EncodingBusy as exc:
+            self.signals.finished.emit(False, str(exc))
+
+    def _convert_all(self) -> None:
         from pathlib import Path
 
         done = failed = 0
@@ -286,6 +304,44 @@ class UploadWorker(QRunnable):
 
 def pool() -> QThreadPool:
     return QThreadPool.globalInstance()
+
+
+#: Only one encoding job may run at a time.
+#:
+#: A single SVT-AV1 encode of 720p holds around 960 MB, and ffmpeg already
+#: uses every core it is given. Two jobs at once therefore do not finish any
+#: sooner -- they contend for the same cores -- while doubling the memory.
+#: On a machine with less headroom than the sum, the kernel kills them, which
+#: reaches the user as "ffmpeg exited with code -11" and a trail of 0-byte
+#: files. Splitting and converting are both encoding, so they share the lock.
+_encoding_lock = threading.Lock()
+
+
+class EncodingBusy(RuntimeError):
+    """Raised when an encoding job is asked for while one is already running."""
+
+
+def encoding_in_progress() -> bool:
+    """Whether an encoding job holds the lock right now."""
+    return _encoding_lock.locked()
+
+
+@contextmanager
+def encoding_slot() -> Iterator[None]:
+    """Hold the single encoding slot, or raise if it is taken.
+
+    Non-blocking on purpose: a queued second job would look like a freeze,
+    and the caller can give a clear message instead.
+    """
+    if not _encoding_lock.acquire(blocking=False):
+        raise EncodingBusy(
+            "Another encoding job is already running. Wait for it to finish, "
+            "or cancel it, before starting another."
+        )
+    try:
+        yield
+    finally:
+        _encoding_lock.release()
 
 
 #: Workers handed to the thread pool are owned and deleted by it once they
