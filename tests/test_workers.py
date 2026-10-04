@@ -211,3 +211,23 @@ def test_the_hooks_cross_threads_safely():
     source = inspect.getsource(VerifyScreen)
     assert "_release_requested" in source
     assert "QueuedConnection" in source
+
+
+def test_the_convert_button_does_not_pass_its_checked_state_as_rows():
+    """clicked carries a bool, which would arrive as the list of rows.
+
+    It crashed with "TypeError: 'bool' object is not iterable" the moment
+    Convert for Commons was pressed.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    QApplication.instance() or QApplication([])
+    from vcut.gui.main_window import MainWindow
+
+    window = MainWindow()
+    screen = window.metadata_screen
+
+    # Should be a no-op with nothing loaded, not an exception.
+    screen._convert(rows=True)
+    screen._convert(rows=False)
+    screen.convert_button.click()

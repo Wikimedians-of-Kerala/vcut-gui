@@ -355,3 +355,58 @@ def test_media_info_carries_the_keyframe_interval():
     # inventing a figure.
     assert MediaInfo().keyframe_interval == 0.0
     assert MediaInfo(keyframe_interval=5.0).keyframe_interval == 5.0
+
+
+# -- hardware acceleration -------------------------------------------------
+
+
+def test_hardware_is_ignored_when_it_cannot_make_the_codec():
+    """A GPU that only does H.264 must not be used for a WebM target.
+
+    Otherwise ffmpeg is told to put H.264 in a WebM container and refuses
+    outright -- "Only VP8 or VP9 or AV1 video ... are supported for WebM" --
+    which reached the user as "ffmpeg exited with code -11".
+    """
+    from vcut.ffmpeg import EncodingSettings, OutputFormat, build_convert_command
+
+    settings = EncodingSettings(use_hardware=True, hardware_encoder="h264_vaapi")
+    for fmt, suffix in (
+        (OutputFormat.WEBM_VP9, "webm"),
+        (OutputFormat.WEBM_AV1, "webm"),
+    ):
+        command = build_convert_command("in.mp4", f"out.{suffix}",
+                                        settings.with_format(fmt))
+        codec = command[command.index("-c:v") + 1]
+        assert codec != "h264_vaapi", f"{fmt.value} used an H.264 GPU encoder"
+        assert codec.startswith("lib"), codec
+
+
+def test_hardware_is_still_used_when_the_codec_matches():
+    # The point is to use the GPU where it genuinely helps, not to disable it.
+    from vcut.ffmpeg import EncodingSettings, OutputFormat, build_convert_command
+
+    settings = EncodingSettings(
+        use_hardware=True, hardware_encoder="h264_vaapi"
+    ).with_format(OutputFormat.MP4)
+    command = build_convert_command("in.mp4", "out.mp4", settings)
+    assert command[command.index("-c:v") + 1] == "h264_vaapi"
+
+
+def test_an_av1_gpu_may_encode_av1():
+    from vcut.ffmpeg import EncodingSettings, OutputFormat, build_convert_command
+
+    settings = EncodingSettings(
+        use_hardware=True, hardware_encoder="av1_vaapi"
+    ).with_format(OutputFormat.WEBM_AV1)
+    command = build_convert_command("in.mp4", "out.webm", settings)
+    assert command[command.index("-c:v") + 1] == "av1_vaapi"
+
+
+def test_the_codec_a_hardware_encoder_makes_is_read_from_its_name():
+    from vcut.ffmpeg import hardware_codec
+
+    assert hardware_codec("h264_vaapi") == "h264"
+    assert hardware_codec("av1_nvenc") == "av1"
+    assert hardware_codec("hevc_qsv") == "hevc"
+    assert hardware_codec("vp9_vaapi") == "vp9"
+    assert hardware_codec("something_else") == ""

@@ -210,7 +210,9 @@ class MetadataScreen(QWidget):
         )
         icons.apply(self.convert_button, "convert")
         self.convert_button.setProperty("iconRole", "convert")
-        self.convert_button.clicked.connect(self._convert)
+        # clicked carries the button's checked state, which would otherwise
+        # arrive as `rows` and be mistaken for a list of rows to convert.
+        self.convert_button.clicked.connect(lambda _checked=False: self._convert())
         layout.addWidget(self.convert_button)
 
         self.sidecar_button = QPushButton("Write descriptions")
@@ -416,6 +418,10 @@ class MetadataScreen(QWidget):
         self._convert(rows=[row])
 
     def _convert(self, rows: list[int] | None = None) -> None:
+        # A Qt signal can deliver its own argument here -- clicked sends a
+        # bool -- so anything that is not a list of rows means "all of them".
+        if not isinstance(rows, (list, tuple, set)):
+            rows = None
         """Convert the selected clips, or just ``rows`` when given."""
         if self._worker is not None:
             return

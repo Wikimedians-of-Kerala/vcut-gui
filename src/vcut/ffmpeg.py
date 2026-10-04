@@ -487,11 +487,58 @@ def _default_render_node() -> str:
     return ""
 
 
+#: Which codec each hardware encoder actually produces. The name says it,
+#: but it has to be checked rather than assumed.
+_HARDWARE_CODEC_PREFIXES = ("h264", "hevc", "av1", "vp9", "vp8", "mpeg2")
+
+
+def hardware_codec(encoder: str) -> str:
+    """The codec a hardware encoder produces: "h264_vaapi" -> "h264"."""
+    name = encoder.lower()
+    for codec in _HARDWARE_CODEC_PREFIXES:
+        if name.startswith(codec):
+            return codec
+    return ""
+
+
+def _wanted_codec(video_codec: str) -> str:
+    """The codec a software encoder name stands for."""
+    mapping = {
+        "libx264": "h264",
+        "libx265": "hevc",
+        "libsvtav1": "av1",
+        "libaom-av1": "av1",
+        "librav1e": "av1",
+        "libvpx-vp9": "vp9",
+        "libvpx": "vp8",
+        "libtheora": "theora",
+    }
+    return mapping.get(video_codec, "")
+
+
 def _hardware_encoder(settings: EncodingSettings) -> str:
-    """The GPU encoder to use, or empty when encoding on the CPU."""
+    """The GPU encoder to use, or empty when encoding on the CPU.
+
+    The configured encoder is only used when it produces the codec actually
+    being asked for. A GPU that can only do H.264 must not be pressed into
+    service for a WebM target: ffmpeg would be told to put H.264 in a WebM
+    container, which it refuses -- "Only VP8 or VP9 or AV1 video ... are
+    supported for WebM" -- and the job dies before encoding a frame.
+    """
     if not settings.use_hardware or settings.video_codec == "copy":
         return ""
-    return settings.hardware_encoder
+
+    encoder = settings.hardware_encoder
+    if not encoder:
+        return ""
+
+    wanted = _wanted_codec(settings.video_codec)
+    produced = hardware_codec(encoder)
+    if wanted and produced and wanted != produced:
+        # The GPU cannot make what this format needs; fall back to the CPU
+        # encoder rather than producing an unplayable file or a crash.
+        return ""
+    return encoder
 
 
 def _encode_args(settings: EncodingSettings) -> list[str]:
