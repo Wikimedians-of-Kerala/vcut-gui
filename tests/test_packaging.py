@@ -350,3 +350,21 @@ def test_every_action_reference_looks_resolvable():
                 # Anything else must be pinned to an exact version, since a
                 # moving major tag may simply not be published.
                 assert exact.match(tag), f"{name}: {ref} should pin an exact version"
+
+
+def test_the_build_script_reports_where_it_failed():
+    # Under `set -e` a failing command exits silently, and a CI log then
+    # ends mid-step with nothing to act on -- which cost three runs.
+    script = read("packaging/build-linux.sh")
+    assert "trap" in script and "ERR" in script
+    assert "BASH_SOURCE" in script and "LINENO" in script
+
+
+def test_a_rerun_cannot_cancel_itself():
+    # A concurrency group keyed only on the ref makes a re-run of a push
+    # share the group with the run it repeats.
+    workflow = read(".github/workflows/release.yml")
+    group = next(
+        line for line in workflow.splitlines() if line.strip().startswith("group:")
+    )
+    assert "github.run_id" in group, group

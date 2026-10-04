@@ -36,10 +36,11 @@ permissions:
   contents: read
 
 concurrency:
-  # A newer push supersedes an in-flight build of the same ref, except for
-  # tags, which must always finish.
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  # Keyed on the run, not just the ref, so a re-run never cancels itself or
+  # the run it is repeating. A newer *push* still supersedes an in-flight
+  # build of the same ref; tags always finish.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.run_id }}
+  cancel-in-progress: false
 
 env:
   # The interpreter the packages are built against. The bundle embeds it.

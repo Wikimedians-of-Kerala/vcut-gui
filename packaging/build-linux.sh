@@ -6,6 +6,10 @@
 # FFmpeg is not bundled; see INSTALL.md.
 set -euo pipefail
 
+# Report where a failure happened. Without this the script dies silently
+# under `set -e` and a CI log ends mid-step with nothing to act on.
+trap 'rc=$?; echo "error: ${BASH_SOURCE[0]}:${LINENO} exited ${rc}" >&2; exit $rc' ERR
+
 cd "$(dirname "$0")/.."
 
 # A stale dist/ from an earlier run looks exactly like a fresh build, so
@@ -19,7 +23,9 @@ uv venv --quiet --clear --python "${VCUT_PYTHON:-3.12}" .venv-build
 uv pip install --quiet --python .venv-build/bin/python -e . pyinstaller
 
 echo "==> Building"
-.venv-build/bin/pyinstaller --noconfirm --clean vcut-gui.spec
+# --log-level WARN keeps CI logs readable; the INFO firehose buries the one
+# line that matters. Failures still print in full.
+.venv-build/bin/pyinstaller --noconfirm --clean --log-level WARN vcut-gui.spec
 
 if [ ! -x dist/vcut-gui/vcut-gui ]; then
     echo "error: PyInstaller did not produce dist/vcut-gui/vcut-gui" >&2
