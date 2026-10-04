@@ -41,6 +41,27 @@ cuts are converted into an uploadable format.
 metadata into the folder and finish later. Clips already on Commons are
 marked with their address and are not offered again.
 
+## Keyboard
+
+The bindings are the ones video editors use, so existing muscle memory
+carries over.
+
+| Keys | What they do |
+| --- | --- |
+| `Space` or `K` | Play or pause |
+| `J` / `L` | Step back or forward a second |
+| `,` / `.` | Step a single frame |
+| `Shift`+`←` / `→` | Jump ten seconds |
+| `I` / `O` | Set the clip's start or end from the playhead |
+| `V` | Mark the clip checked and move on |
+| `Home` / `End` | Jump to the clip's start or end |
+| `Ctrl`+`1`…`4` | Jump to a step |
+| `Ctrl`+`+` / `-` / `0` | Zoom the timeline in, out, or to fit |
+
+`Help > Keyboard shortcuts` (or `F1`) lists everything, with a search box.
+Playback keys only act on the verify screen, so they cannot move a playhead
+you are not looking at.
+
 ## Signing in to Commons
 
 `File > Sign in to Commons` handles the login, so no terminal is needed.

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Keyboard shortcuts throughout, following what video editors have settled
+  on: Space to play, J K L to shuttle, I and O to mark in and out, comma
+  and full stop to step a frame. `Help > Keyboard shortcuts` (F1) lists
+  them all, with a search box.
+
 - Signing in to Wikimedia Commons from the app, with no terminal. A bot
   password is stored in the computer's keychain and the Pywikibot
   configuration written for you.

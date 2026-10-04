@@ -384,6 +384,17 @@ def stylesheet(theme: Theme) -> str:
         min-height: 30px;
         max-height: 30px;
     }}
+    /* Key sequences in the shortcuts window, drawn like keys. */
+    QLabel#keyCap {{
+        background: {colours["button"]};
+        color: {colours["text"]};
+        border: 1px solid {border};
+        border-bottom: 2px solid {border};
+        border-radius: 5px;
+        padding: 3px 9px;
+        font-family: monospace;
+        font-size: 11px;
+    }}
     QLabel#screenHeading {{
         font-size: 18px;
         font-weight: bold;

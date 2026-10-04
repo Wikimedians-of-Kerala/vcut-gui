@@ -499,6 +499,66 @@ class VerifyScreen(QWidget):
     def _set_play_button(self, _text: str, role: str) -> None:
         self.bar.set_playing(role == "pause")
 
+    # -- keyboard actions --------------------------------------------------
+    #
+    # Named for what the key does rather than how far it moves, so the
+    # shortcut table reads as intent and the amounts live in one place.
+
+    def _frame_step(self) -> int:
+        """Milliseconds in one frame of the source, defaulting to 25 fps."""
+        info = self.state.media_info
+        fps = info.fps if info and info.fps else 25.0
+        return max(1, round(1000 / fps))
+
+    def _frame_back(self) -> None:
+        self._pause_if_playing()
+        self._nudge(-self._frame_step())
+
+    def _frame_forward(self) -> None:
+        self._pause_if_playing()
+        self._nudge(self._frame_step())
+
+    def _shuttle_back(self) -> None:
+        self._nudge(-1000)
+
+    def _shuttle_forward(self) -> None:
+        self._nudge(1000)
+
+    def _jump_back(self) -> None:
+        self._nudge(-10_000)
+
+    def _jump_forward(self) -> None:
+        self._nudge(10_000)
+
+    def _pause_if_playing(self) -> None:
+        """Stepping a frame while playing is meaningless; stop first."""
+        from PySide6.QtMultimedia import QMediaPlayer
+
+        if self.player.playbackState() == QMediaPlayer.PlayingState:
+            self.player.pause()
+            self._set_play_button("Play", "play")
+
+    def _mark_in(self) -> None:
+        self._set_from_player(COL_START)
+
+    def _mark_out(self) -> None:
+        self._set_from_player(COL_END)
+
+    def _select_all_clips(self) -> None:
+        self._set_all_selected(True)
+
+    def _select_no_clips(self) -> None:
+        self._set_all_selected(False)
+
+    def _zoom_in(self) -> None:
+        self.bar.zoom_in()
+
+    def _zoom_out(self) -> None:
+        self.bar.zoom_out()
+
+    def _zoom_reset(self) -> None:
+        self.bar.zoom_reset()
+
     def _nudge(self, delta_ms: int) -> None:
         self.player.setPosition(max(0, self.player.position() + delta_ms))
 

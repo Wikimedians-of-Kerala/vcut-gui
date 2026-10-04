@@ -259,7 +259,14 @@ class MainWindow(QMainWindow):
             group.addAction(action)
             theme_menu.addAction(action)
 
+        self._register_shortcuts(view_menu)
+
         help_menu = self.menuBar().addMenu("&Help")
+        shortcuts_action = QAction("&Keyboard shortcuts…", self)
+        shortcuts_action.setShortcuts([QKeySequence("F1"), QKeySequence("Ctrl+?")])
+        shortcuts_action.triggered.connect(self._show_shortcuts)
+        help_menu.addAction(shortcuts_action)
+        help_menu.addSeparator()
         about_action = QAction("&About", self)
         about_action.triggered.connect(self._about)
         help_menu.addAction(about_action)
@@ -378,6 +385,71 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(
             f"{name} — vcut" if name else "vcut — conference video cutter"
         )
+
+    def _register_shortcuts(self, view_menu) -> None:
+        """Bind the shortcut table to real actions.
+
+        Window-wide rather than per-widget, so a key works wherever the
+        focus happens to be; the table is the single source of truth, which
+        keeps the help window honest.
+        """
+        from .shortcuts import SHORTCUTS
+
+        screens = {
+            "verify": self.verify_screen,
+            "setup": self.setup_screen,
+            "metadata": self.metadata_screen,
+            "upload": self.upload_screen,
+        }
+
+        # Jumping straight to a step.
+        for index in range(len(STEPS)):
+            action = QAction(f"Step {index + 1}", self)
+            action.setShortcut(QKeySequence(f"Ctrl+{index + 1}"))
+            action.setShortcutContext(Qt.ApplicationShortcut)
+            action.triggered.connect(lambda _=False, i=index: self.go_to(i))
+            self.addAction(action)
+
+        for shortcut in SHORTCUTS:
+            if not shortcut.slot:
+                continue
+            owner = screens.get(shortcut.target, self)
+            handler = getattr(owner, shortcut.slot, None)
+            if not callable(handler):
+                continue
+
+            action = QAction(shortcut.action, self)
+            action.setShortcuts([QKeySequence(key) for key in shortcut.keys])
+            action.setShortcutContext(Qt.ApplicationShortcut)
+            action.setToolTip(shortcut.description)
+            action.triggered.connect(
+                lambda _=False, h=handler, s=shortcut: self._run_shortcut(h, s)
+            )
+            self.addAction(action)
+
+    def _run_shortcut(self, handler, shortcut) -> None:
+        """Run a shortcut, but only where it makes sense.
+
+        The playback keys would otherwise fire while the user is on another
+        screen, moving a playhead they cannot see.
+        """
+        if shortcut.target and shortcut.target != self._current_screen_name():
+            return
+        handler()
+
+    def _current_screen_name(self) -> str:
+        return ("setup", "verify", "metadata", "upload")[self.stack.currentIndex()]
+
+    def _next_step(self) -> None:
+        self.go_to(self.stack.currentIndex() + 1)
+
+    def _previous_step(self) -> None:
+        self.go_to(self.stack.currentIndex() - 1)
+
+    def _show_shortcuts(self) -> None:
+        from .shortcuts_dialog import ShortcutsDialog
+
+        ShortcutsDialog(self).exec()
 
     def _show_login(self) -> None:
         from .login_dialog import LoginDialog
