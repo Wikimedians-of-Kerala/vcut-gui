@@ -188,6 +188,37 @@ already in the repository, and GitHub picks it up on its own:
 The `GITHUB_TOKEN` the release job uses is provided automatically. You do
 not create it, and there is no secret to paste anywhere.
 
+### Where the packages appear
+
+A tag publishes them to the **Releases** page. Every other run keeps them as
+workflow artifacts instead, which are easy to miss:
+
+1. **Actions** tab.
+2. Click the workflow run.
+3. Scroll to the bottom — **Artifacts**.
+
+There you will find `vcut-gui-linux`, `vcut-gui-windows` and
+`vcut-gui-wheel`, each a zip around the package. GitHub always wraps
+artifacts in a zip, so the Linux one downloads as a zip containing the
+`.tar.gz`.
+
+Artifacts expire after 90 days; releases do not.
+
+### When it runs
+
+| Trigger | Builds | Publishes |
+| --- | --- | --- |
+| A `v*` tag | Yes | **Yes** — a GitHub release |
+| A push or PR touching packaging | Yes | No — artifacts only |
+| **Run workflow** by hand | Yes | No — artifacts only |
+| An ordinary commit | No | No |
+
+Packaging changes — the spec, the build scripts, the dependencies — build on
+every push and pull request, because a broken spec otherwise stays hidden
+until a tag, which is the worst moment to find it. Ordinary commits do not
+trigger a build, so the Windows minutes go on changes that could actually
+affect packaging.
+
 ### Trying it before you tag
 
 Run it by hand first — **Actions → Build release packages → Run workflow**.

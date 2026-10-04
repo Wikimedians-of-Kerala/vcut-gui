@@ -13,6 +13,23 @@ name: Build release packages
 on:
   push:
     tags: ["v*"]
+    # Also on pushes that touch packaging itself. A broken spec or build
+    # script otherwise stays hidden until a tag, which is the worst moment
+    # to find it. Ordinary commits do not trigger a build.
+    branches: [master]
+    paths:
+      - "packaging/**"
+      - "vcut-gui.spec"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/release.yml"
+  pull_request:
+    paths:
+      - "packaging/**"
+      - "vcut-gui.spec"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 permissions:

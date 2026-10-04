@@ -198,3 +198,28 @@ def test_missing_artifacts_fail_rather_than_release_nothing():
     # would publish a release with pieces quietly missing.
     workflow = read(".github/workflows/release.yml")
     assert workflow.count("if-no-files-found: error") == 3
+
+
+def test_packaging_changes_are_built_not_only_tags():
+    # A broken spec otherwise stays hidden until a tag, which is the worst
+    # moment to discover it.
+    triggers = _release_workflow()
+    on = triggers.get("on", triggers.get(True))
+    assert "pull_request" in on
+    watched = set(on["push"].get("paths", []))
+    assert "vcut-gui.spec" in watched
+    assert any(path.startswith("packaging/") for path in watched)
+
+
+def test_only_tags_publish_a_release():
+    # Building on every packaging push is fine; publishing on one is not.
+    gate = _release_workflow()["jobs"]["release"]["if"]
+    assert "refs/tags/v" in gate
+
+
+def test_the_qt_libraries_still_exist_on_the_runner():
+    # libgl1-mesa-glx was removed in Ubuntu 24.04, which ubuntu-latest now
+    # is; installing it fails the job outright.
+    workflow = read(".github/workflows/release.yml")
+    assert "libgl1-mesa-glx" not in workflow
+    assert "libgl1" in workflow
