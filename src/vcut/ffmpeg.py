@@ -881,3 +881,63 @@ def _cleanup_passlogs(prefix: str) -> None:
             leftover.unlink()
         except OSError:
             pass
+
+
+def keyframe_interval(
+    source: str | Path,
+    *,
+    around: float = 0.0,
+    window: float = 60.0,
+    ffprobe_path: str = "",
+) -> float:
+    """Seconds between keyframes near `around`, or 0.0 if it cannot be read.
+
+    Stream copy can only cut on a keyframe, so this is what decides how far
+    a copied clip drifts from the time asked for.
+    """
+    exe = find_executable("ffprobe", ffprobe_path)
+    command = [
+        exe, "-v", "error", "-select_streams", "v",
+        "-show_entries", "packet=pts_time,flags",
+        "-read_intervals", f"{max(0.0, around):.3f}%+{window:.0f}",
+        "-of", "csv=p=0", str(source),
+    ]
+    try:
+        result = subprocess.run(
+            command, capture_output=True, text=True, timeout=30,
+            **_no_window_kwargs(),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return 0.0
+
+    times: list[float] = []
+    for line in result.stdout.splitlines():
+        stamp, _, flags = line.partition(",")
+        if "K" not in flags:
+            continue
+        try:
+            times.append(float(stamp))
+        except ValueError:
+            continue
+
+    if len(times) < 2:
+        return 0.0
+    gaps = [b - a for a, b in zip(times, times[1:]) if b > a]
+    if not gaps:
+        return 0.0
+    return sum(gaps) / len(gaps)
+
+
+def copy_drift(
+    starts: list[float],
+    interval: float,
+) -> tuple[float, float]:
+    """Worst and average seconds a stream copy would start early.
+
+    A copied cut snaps back to the preceding keyframe, so a clip whose start
+    falls between keyframes opens on the tail of whatever came before.
+    """
+    if interval <= 0 or not starts:
+        return 0.0, 0.0
+    drifts = [start % interval for start in starts]
+    return max(drifts), sum(drifts) / len(drifts)

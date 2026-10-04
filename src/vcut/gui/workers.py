@@ -14,6 +14,8 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 
+from .. import resources
+
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 
 from ..commons import CommonsFile
@@ -111,8 +113,12 @@ class CutWorker(QRunnable):
         self._cancelled = True
 
     def run(self) -> None:
+        # Budget against the job actually being run: AV1 at 1080p costs far
+        # more than x264 at 720p, and the machine decides how many fit.
+        first = self._jobs[0] if self._jobs else None
+        codec = getattr(getattr(first, "settings", None), "video_codec", "")
         try:
-            with encoding_slot():
+            with encoding_slot(codec, **_budget_hints(self._jobs)):
                 self._cut_all()
         except EncodingBusy as exc:
             self.signals.finished.emit(False, str(exc))
@@ -202,8 +208,12 @@ class ConvertWorker(QRunnable):
         self._cancelled = True
 
     def run(self) -> None:
+        # Budget against the job actually being run: AV1 at 1080p costs far
+        # more than x264 at 720p, and the machine decides how many fit.
+        first = self._jobs[0] if self._jobs else None
+        codec = getattr(getattr(first, "settings", None), "video_codec", "")
         try:
-            with encoding_slot():
+            with encoding_slot(codec, **_budget_hints(self._jobs)):
                 self._convert_all()
         except EncodingBusy as exc:
             self.signals.finished.emit(False, str(exc))
@@ -306,42 +316,79 @@ def pool() -> QThreadPool:
     return QThreadPool.globalInstance()
 
 
-#: Only one encoding job may run at a time.
+#: How many encoding jobs may run at once, and who is running them.
 #:
-#: A single SVT-AV1 encode of 720p holds around 960 MB, and ffmpeg already
-#: uses every core it is given. Two jobs at once therefore do not finish any
-#: sooner -- they contend for the same cores -- while doubling the memory.
-#: On a machine with less headroom than the sum, the kernel kills them, which
-#: reaches the user as "ffmpeg exited with code -11" and a trail of 0-byte
-#: files. Splitting and converting are both encoding, so they share the lock.
-_encoding_lock = threading.Lock()
+#: Encoding is the heaviest thing here: one SVT-AV1 encode of 720p holds
+#: around 950 MB, measured. Start more than the machine can hold and the
+#: kernel kills them, which arrives as "ffmpeg exited with code -11" and a
+#: trail of 0-byte files. :mod:`vcut.resources` works out a safe number from
+#: the memory and cores actually present, so a 64 GB workstation is allowed
+#: more than a 4 GB laptop instead of everyone getting the same guess.
+#:
+#: Splitting and converting are both encoding, so they share this budget.
+_encoding_guard = threading.Lock()
+_encoding_running = 0
+_encoding_allowed = 1
 
 
 class EncodingBusy(RuntimeError):
-    """Raised when an encoding job is asked for while one is already running."""
+    """Raised when there is no room to start another encoding job."""
 
 
 def encoding_in_progress() -> bool:
-    """Whether an encoding job holds the lock right now."""
-    return _encoding_lock.locked()
+    """Whether any encoding job is running."""
+    with _encoding_guard:
+        return _encoding_running > 0
+
+
+def encoding_capacity() -> int:
+    """How many jobs the last plan allowed to run at once."""
+    with _encoding_guard:
+        return _encoding_allowed
 
 
 @contextmanager
-def encoding_slot() -> Iterator[None]:
-    """Hold the single encoding slot, or raise if it is taken.
+def encoding_slot(
+    codec: str = "",
+    *,
+    width: int = 0,
+    height: int = 0,
+    output_directory: str = ".",
+) -> Iterator[None]:
+    """Hold one encoding slot, or raise if the machine has no room.
 
-    Non-blocking on purpose: a queued second job would look like a freeze,
-    and the caller can give a clear message instead.
+    Non-blocking on purpose: a queued job that silently waits looks like a
+    freeze, and the caller can say something useful instead.
     """
-    if not _encoding_lock.acquire(blocking=False):
-        raise EncodingBusy(
-            "Another encoding job is already running. Wait for it to finish, "
-            "or cancel it, before starting another."
-        )
+    global _encoding_running, _encoding_allowed
+
+    budget = resources.plan(
+        codec or "libsvtav1",
+        width=width,
+        height=height,
+        wanted=1,
+        output_directory=output_directory,
+    )
+
+    with _encoding_guard:
+        if budget.blocked and _encoding_running == 0:
+            # Nothing is running and still no room: the machine itself is
+            # the problem, so pass on what it said to do about it.
+            raise EncodingBusy(budget.blocked)
+        _encoding_allowed = max(1, budget.jobs)
+        if _encoding_running >= _encoding_allowed:
+            raise EncodingBusy(
+                f"Another encoding job is already running, and this computer "
+                f"has room for {_encoding_allowed} at a time. Wait for it to "
+                f"finish, or cancel it, before starting another."
+            )
+        _encoding_running += 1
+
     try:
         yield
     finally:
-        _encoding_lock.release()
+        with _encoding_guard:
+            _encoding_running -= 1
 
 
 #: Workers handed to the thread pool are owned and deleted by it once they
@@ -365,3 +412,30 @@ def start(worker) -> None:
         if signal is not None:
             signal.connect(release)
     pool().start(worker)
+
+
+def _budget_hints(jobs) -> dict:
+    """What the resource planner needs to know about a batch of jobs.
+
+    The size comes from the settings when they carry one; otherwise the
+    planner falls back to its own assumption, which is deliberately on the
+    heavy side.
+    """
+    from pathlib import Path
+
+    width = height = 0
+    output_directory = "."
+    for job in jobs:
+        settings = getattr(job, "settings", None)
+        width = width or int(getattr(settings, "width", 0) or 0)
+        height = height or int(getattr(settings, "height", 0) or 0)
+        output = getattr(job, "output", "")
+        if output and output_directory == ".":
+            output_directory = str(Path(output).parent)
+        if width and height:
+            break
+    return {
+        "width": width,
+        "height": height,
+        "output_directory": output_directory,
+    }

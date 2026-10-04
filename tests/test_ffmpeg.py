@@ -324,3 +324,25 @@ def test_a_real_output_survives_a_failure(tmp_path):
 
     run_command([sys.executable, str(script), str(target)], 1.0)
     assert target.exists() and target.stat().st_size > 0
+
+
+def test_copy_drift_is_zero_on_a_keyframe():
+    from vcut.ffmpeg import copy_drift
+
+    worst, average = copy_drift([0.0, 5.0, 10.0], 5.0)
+    assert worst == 0.0 and average == 0.0
+
+
+def test_copy_drift_measures_how_early_a_clip_opens():
+    from vcut.ffmpeg import copy_drift
+
+    # Keyframes every 5s: a start at 659 snaps back to 655.
+    worst, average = copy_drift([659.0], 5.0)
+    assert worst == pytest.approx(4.0)
+    assert average == pytest.approx(4.0)
+
+
+def test_copy_drift_without_a_known_interval_is_zero():
+    from vcut.ffmpeg import copy_drift
+
+    assert copy_drift([659.0], 0.0) == (0.0, 0.0)
