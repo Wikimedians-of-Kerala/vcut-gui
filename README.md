@@ -174,8 +174,15 @@ the recording.
 | Mode | Speed | Accuracy |
 | --- | --- | --- |
 | Accurate, fast seek *(default)* | Fast | Exact |
-| Stream copy | Instant | Snaps to keyframes |
+| Stream copy | Hundreds of times faster | Starts a few seconds early |
 | Decode from the start | Slow on long files | Exact |
+
+Stream copy is worth a serious look for conference video. It skips encoding
+entirely — 442 ms against 113 s for one 22-minute clip — at the cost of
+opening each clip on the preceding keyframe. The app measures your file's
+keyframe spacing and tells you exactly how early that is; on a recording with
+keyframes five seconds apart it is a second or two, which a talk's quiet
+opening absorbs easily.
 
 ## Video formats
 

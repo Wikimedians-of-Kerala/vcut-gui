@@ -184,3 +184,65 @@ def test_the_setup_form_has_no_orphan_rows(qt_app):
 
     source = Path("src/vcut/gui/screen_setup.py").read_text(encoding="utf-8")
     assert 'addRow("", ' not in source
+
+
+def test_stream_copy_states_what_it_costs_on_this_file(qt_app):
+    """The warning must carry the measured figure, not "several seconds".
+
+    Copying is hundreds of times faster, and on a conference recording the
+    drift is usually harmless, so the user needs the real number to judge.
+    """
+    from vcut.ffmpeg import CutMode, MediaInfo
+    from vcut.gui.main_window import MainWindow
+    from vcut.models import Clip
+
+    window = MainWindow()
+    screen = window.setup_screen
+    window.state.set_source(
+        "day1.mp4",
+        MediaInfo(duration=32540.0, width=1280, height=720, fps=30.0,
+                  keyframe_interval=5.0),
+    )
+    window.state.clips = [
+        Clip(programme="One", start_time="00:10:59", end_time="00:33:34"),
+        Clip(programme="Two", start_time="00:33:52", end_time="00:52:51"),
+    ]
+
+    screen.cut_box.setCurrentIndex(screen.cut_box.findData(CutMode.COPY))
+    text = screen.cut_hint.text()
+
+    assert "5s apart" in text, text
+    assert "early" in text
+    assert "faster" in text
+
+
+def test_an_unmeasured_file_does_not_invent_a_figure(qt_app):
+    from vcut.ffmpeg import CutMode, MediaInfo
+    from vcut.gui.main_window import MainWindow
+
+    window = MainWindow()
+    screen = window.setup_screen
+    window.state.set_source("day1.mp4", MediaInfo(duration=600.0))
+    window.state.clips = []
+
+    screen.cut_box.setCurrentIndex(screen.cut_box.findData(CutMode.COPY))
+    text = screen.cut_hint.text()
+
+    assert "keyframes are" not in text
+    assert "faster" in text
+
+
+def test_an_unparseable_row_does_not_break_the_hint(qt_app):
+    from vcut.ffmpeg import CutMode, MediaInfo
+    from vcut.gui.main_window import MainWindow
+    from vcut.models import Clip
+
+    window = MainWindow()
+    screen = window.setup_screen
+    window.state.set_source(
+        "day1.mp4", MediaInfo(duration=600.0, keyframe_interval=5.0)
+    )
+    window.state.clips = [Clip(programme="x", start_time="nonsense", end_time="")]
+
+    screen.cut_box.setCurrentIndex(screen.cut_box.findData(CutMode.COPY))
+    assert screen.cut_hint.text()

@@ -346,3 +346,12 @@ def test_copy_drift_without_a_known_interval_is_zero():
     from vcut.ffmpeg import copy_drift
 
     assert copy_drift([659.0], 0.0) == (0.0, 0.0)
+
+
+def test_media_info_carries_the_keyframe_interval():
+    from vcut.ffmpeg import MediaInfo
+
+    # Zero means "not measured", so the hint can stay quiet rather than
+    # inventing a figure.
+    assert MediaInfo().keyframe_interval == 0.0
+    assert MediaInfo(keyframe_interval=5.0).keyframe_interval == 5.0

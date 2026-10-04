@@ -25,6 +25,7 @@ from ..ffmpeg import (
     FFmpegError,
     build_command,
     convert_file,
+    keyframe_interval,
     probe,
     run_command,
 )
@@ -58,6 +59,19 @@ class ProbeWorker(QRunnable):
             self.signals.log.emit(f"Could not read {self._path}: {exc}")
             self.signals.probed.emit(None)
             return
+
+        # How far apart the keyframes are decides what stream copy costs in
+        # accuracy, so measure it here rather than warning in the abstract.
+        # Sampled a little way in: the opening of a recording is often an
+        # idle slate, which is not representative.
+        try:
+            start_at = min(300.0, max(0.0, info.duration / 10))
+            info.keyframe_interval = keyframe_interval(
+                self._path, around=start_at, ffprobe_path=self._ffprobe
+            )
+        except Exception:  # noqa: BLE001 - never fail a probe over this
+            pass
+
         self.signals.probed.emit(info)
 
 

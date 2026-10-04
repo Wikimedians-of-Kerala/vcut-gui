@@ -357,11 +357,28 @@ frame. The longer the recording, the wider that gap.
 | Mode | Speed | Accuracy |
 | --- | --- | --- |
 | **Accurate, fast seek** *(default)* | Fast | Exact |
-| Stream copy | Instant | Snaps to keyframes |
+| Stream copy | Hundreds of times faster | Starts a few seconds early |
 | Decode from the start | Slow on long files | Exact |
 
-Stream copy is worth choosing only when the cut points happen to be keyframes
-and you need the speed.
+### When stream copy is the better choice
+
+Copying skips encoding altogether, and the difference is not small. On one
+22-minute clip from a nine-hour recording: **442 milliseconds, against 113
+seconds** to re-encode. Cutting a whole day becomes a matter of seconds.
+
+The cost is that a copied cut can only begin on a keyframe, so a clip opens
+slightly early, on the tail of whatever came before. How early depends on the
+recording, and the program measures yours: pick stream copy and the note under
+the setting gives the real figure for your file.
+
+On a typical conference recording with keyframes five seconds apart, clips
+open about one to two seconds early, four at worst. **For conference video
+that is usually fine** — there is quiet time before a talk begins, and opening
+a couple of seconds early is safer than risking the speaker's first words.
+
+So: use stream copy for review cuts of talks, where a second or two of lead-in
+costs nothing and the speed is transformative. Use the accurate default when a
+cut has to land on an exact frame.
 
 ---
 

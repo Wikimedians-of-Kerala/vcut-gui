@@ -280,6 +280,9 @@ class MediaInfo:
     audio_codec: str = ""
     fps: float = 0.0
     size_bytes: int = 0
+    #: Seconds between keyframes, 0.0 if not measured. This is what decides
+    #: how far a stream-copied cut drifts from the time asked for.
+    keyframe_interval: float = 0.0
     #: The full ffprobe payload, for the detailed information window.
     raw: dict = field(default_factory=dict)
 
