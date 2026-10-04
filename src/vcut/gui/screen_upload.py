@@ -140,10 +140,7 @@ class UploadScreen(QWidget):
 
     def restyle(self) -> None:
         """Rebuild row colours and button icons after a theme change."""
-        for button in self.findChildren(QPushButton):
-            role = button.property("iconRole")
-            if role:
-                icons.apply(button, role)
+        icons.restyle_widget(self)
         for row, (_index, prepared) in enumerate(self._files):
             self._colour_row(row, bool(validate_for_upload(prepared)))
 

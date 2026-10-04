@@ -387,6 +387,11 @@ class MainWindow(QMainWindow):
     def refresh_theme(self) -> None:
         """Rebuild colours and icons that are not taken from the palette."""
         self.setWindowIcon(app_icon())
+        # Walking from the window covers everything, including the screens'
+        # action rows: those are reparented into the shared bottom bar, so a
+        # screen can no longer find them among its own children and they kept
+        # the previous theme's colour.
+        icons.restyle_widget(self)
         for screen in (self.setup_screen, self.verify_screen,
                        self.metadata_screen, self.upload_screen):
             restyle = getattr(screen, "restyle", None)

@@ -128,6 +128,12 @@ def apply(button, role: str, *, size: int = 18) -> None:
     """
     from PySide6.QtCore import QSize
 
+    # Remember how this button was iconed, so a theme change can re-tint it
+    # without every call site having to tag it. Relying on callers to do that
+    # by hand left nine buttons stuck in the previous theme's colour.
+    button.setProperty("iconRole", role)
+    button.setProperty("vcutIconSize", size)
+
     pictogram = icon(role)
     if pictogram.isNull():
         return
@@ -162,3 +168,19 @@ def _with_trailing_gap(source: QIcon, size: int, gap: int = 6) -> QIcon:
 def clear_cache() -> None:
     """Drop cached icons, after a theme change."""
     _cached.cache_clear()
+
+
+def restyle_widget(widget) -> None:
+    """Re-tint every icon under ``widget`` for the current theme.
+
+    Walks the widget tree rather than a list of tagged buttons, so an icon
+    added later is picked up without anyone remembering to register it.
+    """
+    from PySide6.QtWidgets import QAbstractButton
+
+    for button in widget.findChildren(QAbstractButton):
+        role = button.property("iconRole")
+        if not role:
+            continue
+        size = button.property("vcutIconSize")
+        apply(button, role, size=int(size) if size else 18)

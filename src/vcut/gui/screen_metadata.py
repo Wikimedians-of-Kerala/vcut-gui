@@ -244,10 +244,7 @@ class MetadataScreen(QWidget):
 
     def restyle(self) -> None:
         """Rebuild row colours and button icons after a theme change."""
-        for button in self.findChildren(QPushButton):
-            role = button.property("iconRole")
-            if role:
-                icons.apply(button, role)
+        icons.restyle_widget(self)
         self.refresh()
 
     # -- data --------------------------------------------------------------

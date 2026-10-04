@@ -280,10 +280,7 @@ class VerifyScreen(QWidget):
     def restyle(self) -> None:
         """Repaint what does not follow the palette on its own."""
         self.bar.restyle()
-        for button in self.findChildren(QPushButton):
-            role = button.property("iconRole")
-            if role:
-                icons.apply(button, role)
+        icons.restyle_widget(self)
         for row, clip in enumerate(self.state.clips):
             self._colour_row(row, clip)
 

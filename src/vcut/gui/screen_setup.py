@@ -279,10 +279,7 @@ class SetupScreen(QWidget):
 
     def restyle(self) -> None:
         """Rebuild button icons after a theme change."""
-        for button in self.findChildren(QPushButton):
-            role = button.property("iconRole")
-            if role:
-                icons.apply(button, role)
+        icons.restyle_widget(self)
 
     # -- settings ----------------------------------------------------------
 

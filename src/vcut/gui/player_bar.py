@@ -613,8 +613,7 @@ class PlayerBar(QFrame):
         )
         # Orange against the blue groove, so the clip's extent is unmistakable;
         # the other clips sit behind it in a darker blue.
-        for button in (self.mark_in_button, self.mark_out_button):
-            icons.apply(button, "mark-in" if button is self.mark_in_button else "mark-out")
+        icons.restyle_widget(self)
 
         self.scrubber.set_colours(
             "#f57c1f" if dark else "#e06c00",
