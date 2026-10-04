@@ -31,6 +31,7 @@ from .theme import SPACE_EDGE, SPACE_ROW
 from .state import AppState
 from .table_support import configure_table
 from .widgets import StatusLabel, row_colour
+from . import workers
 from .workers import CutJob, CutWorker, start
 
 COLUMNS = ("", "Programme", "Start", "End", "Length", "Code", "Checked", "Status")
@@ -102,8 +103,40 @@ class VerifyScreen(QWidget):
         self.player.positionChanged.connect(self._position_changed)
         self.player.durationChanged.connect(self._duration_changed)
         self.player.errorOccurred.connect(self._player_error)
+
+        # Qt Multimedia loads its own FFmpeg into this process -- 7.1.5,
+        # against a system ffmpeg that is often a different major version.
+        # Holding a long recording open through it while a child ffmpeg
+        # encodes has been implicated in crashes that do not occur with the
+        # player idle, so let go of the file before any encode starts.
+        workers.before_encoding(self.release_player)
+
         layout.addWidget(self.video, 1)
         return panel
+
+    def release_player(self) -> None:
+        """Stop playback and let go of the file.
+
+        Called before encoding starts. The position is remembered so the
+        player can pick up where it was once the job is done.
+        """
+        try:
+            self._resume_position = self.player.position()
+            self.player.stop()
+        except RuntimeError:  # the widget may already be gone
+            pass
+
+    def restore_player(self) -> None:
+        """Reopen the source after an encode, back where it was."""
+        path = self.state.source_path
+        if not path:
+            return
+        try:
+            self.player.setSource(QUrl.fromLocalFile(path))
+            if getattr(self, "_resume_position", 0):
+                self.player.setPosition(self._resume_position)
+        except RuntimeError:
+            pass
 
     def _transport_panel(self) -> QWidget:
         """The timeline and transport, full width under both panes."""

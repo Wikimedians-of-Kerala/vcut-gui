@@ -98,3 +98,36 @@ def test_both_kinds_of_job_share_the_slot():
     for worker in (CutWorker, ConvertWorker):
         source = inspect.getsource(worker.run)
         assert "encoding_slot" in source, worker.__name__
+
+
+def test_the_player_is_released_before_encoding(qt_app=None):
+    """Qt Multimedia keeps its own FFmpeg in this process.
+
+    It announces "Using Qt multimedia with FFmpeg version 7.1.5" while the
+    system ffmpeg may be 9.x, so a long file held open through the player
+    while a child ffmpeg runs is a configuration worth avoiding.
+    """
+    from vcut.gui import workers
+
+    called: list[str] = []
+    workers.before_encoding(lambda: called.append("released"))
+
+    try:
+        with workers.encoding_slot("libx264", width=640, height=360):
+            pass
+    except workers.EncodingBusy:
+        pass
+
+    assert called, "nothing was released before the encode"
+
+
+def test_a_failing_release_does_not_block_the_job():
+    # Letting go of the player is a precaution, not a precondition.
+    from vcut.gui import workers
+
+    def explode() -> None:
+        raise RuntimeError("the widget is gone")
+
+    workers.before_encoding(explode)
+    with workers.encoding_slot("libx264", width=640, height=360):
+        pass

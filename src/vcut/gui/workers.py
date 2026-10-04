@@ -330,6 +330,28 @@ def pool() -> QThreadPool:
     return QThreadPool.globalInstance()
 
 
+#: Called before an encoding job starts, so the window can release the media
+#: player. Qt Multimedia loads its *own* FFmpeg into this process -- 7.1.5
+#: against a system ffmpeg that may be 9.x -- and holding a large file open
+#: through it while a child ffmpeg works on the same files has been
+#: implicated in crashes that do not happen with the player idle.
+_before_encoding: list = []
+
+
+def before_encoding(callback) -> None:
+    """Register something to run just before any encode starts."""
+    if callback not in _before_encoding:
+        _before_encoding.append(callback)
+
+
+def _release_resources() -> None:
+    for callback in list(_before_encoding):
+        try:
+            callback()
+        except Exception:  # noqa: BLE001 - never block a job over this
+            pass
+
+
 #: How many encoding jobs may run at once, and who is running them.
 #:
 #: Encoding is the heaviest thing here: one SVT-AV1 encode of 720p holds
@@ -383,6 +405,8 @@ def encoding_slot(
         wanted=1,
         output_directory=output_directory,
     )
+
+    _release_resources()
 
     with _encoding_guard:
         if budget.blocked and _encoding_running == 0:
