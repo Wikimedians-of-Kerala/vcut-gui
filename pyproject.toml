@@ -47,6 +47,8 @@ dev = [
     "pywikibot>=9.0",
     "pytest>=8.0",
     "pytest-cov>=5.0",
+    # Reading the CI workflows in tests/test_packaging.py.
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]

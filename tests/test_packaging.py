@@ -7,6 +7,8 @@ PyInstaller run takes minutes.
 import tomllib
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -166,8 +168,10 @@ def test_the_app_detects_a_missing_webengine_rather_than_assuming():
 
 
 def _release_workflow() -> dict:
-    import yaml
-
+    # Skip rather than error if PyYAML is absent: a check that cannot run is
+    # not the same as a product fault, and this file is otherwise importable
+    # with nothing but the standard library.
+    yaml = pytest.importorskip("yaml")
     return yaml.safe_load(read(".github/workflows/release.yml"))
 
 
@@ -242,7 +246,8 @@ def test_actions_are_not_on_deprecated_node():
         workflow = read(name)
         assert "actions/checkout@v4" not in workflow, name
         assert "actions/upload-artifact@v4" not in workflow, name
-        assert "astral-sh/setup-uv@v5" not in workflow, name
+        for stale in ("astral-sh/setup-uv@v5", "astral-sh/setup-uv@v6"):
+            assert stale not in workflow, f"{name}: {stale}"
 
 
 def test_the_version_is_declared_once_and_agrees():
@@ -255,3 +260,37 @@ def test_the_version_is_declared_once_and_agrees():
     assert f'__version__ = "{declared}"' in module, module
     # And the changelog should have an entry for it.
     assert f"## {declared}" in read("CHANGELOG.md")
+
+
+def test_the_tests_only_import_declared_dependencies():
+    """A test importing something undeclared passes for whoever happens to
+    have it installed and fails in CI. That is how pyyaml slipped in."""
+    import ast
+    import sys
+
+    data = tomllib.loads(read("pyproject.toml"))["project"]
+    distributions = data["dependencies"] + data["optional-dependencies"]["dev"]
+    names = {
+        dist.split(">")[0].split("=")[0].split("[")[0].strip().lower()
+        for dist in distributions
+    }
+    # A few distributions install under a different import name.
+    names |= {"yaml"} if "pyyaml" in names else set()
+    names |= {"pytest_cov"} if "pytest-cov" in names else set()
+
+    stdlib = set(sys.stdlib_module_names)
+    undeclared: dict[str, set[str]] = {}
+    for path in sorted((ROOT / "tests").glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            module = None
+            if isinstance(node, ast.Import):
+                module = node.names[0].name.split(".")[0]
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                module = node.module.split(".")[0]
+            if not module or module in stdlib or module == "vcut":
+                continue
+            if module.lower() not in names:
+                undeclared.setdefault(module, set()).add(path.name)
+
+    assert not undeclared, f"undeclared test imports: {undeclared}"
