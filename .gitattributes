@@ -1,0 +1,13 @@
+# Keep line endings predictable regardless of each contributor's git config.
+# PowerShell is the one that matters: a .ps1 checked out with mixed endings
+# can fail in ways that look like a script bug.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary, never touch.
+*.png binary
+*.jpg binary
+*.ico binary
+*.svg text eol=lf

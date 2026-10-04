@@ -45,8 +45,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
       - name: Install the Qt runtime libraries
@@ -65,8 +65,8 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
       - name: Install the Qt runtime libraries
@@ -91,7 +91,7 @@ jobs:
             echo "::error::Qt WebEngine is back in the bundle (see docs/BUILDING.md)"
             exit 1
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: vcut-gui-linux
           path: dist/vcut-gui-linux.tar.gz
@@ -101,8 +101,8 @@ jobs:
     needs: test
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
       - run: uv python install ${{ env.VCUT_PYTHON }}
@@ -131,7 +131,7 @@ jobs:
               throw "Qt WebEngine is back in the bundle (see docs/BUILDING.md)"
             }
           } finally { $zip.Dispose() }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: vcut-gui-windows
           path: dist/vcut-gui-windows.zip
@@ -141,15 +141,15 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
       - run: uv build
       # A wheel with broken metadata installs fine here and fails on PyPI.
       - name: Check the metadata
         run: uv run --with twine twine check dist/*
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: vcut-gui-wheel
           path: dist/*
@@ -162,7 +162,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v6
         with:
           path: artifacts
           merge-multiple: true

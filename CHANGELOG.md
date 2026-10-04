@@ -1,6 +1,16 @@
 # Changelog
 
-## Unreleased
+## 1.0.3 — 2026-10-04
+
+- First release built by CI on GitHub, which is also the first Windows
+  package built anywhere. Getting the first run green took four fixes: the
+  PyInstaller spec called `TOC()` without importing it (it worked locally
+  only because PyInstaller injects that name, and it is deprecated in
+  PyInstaller 6); the build scripts took whatever interpreter `uv` found
+  rather than the pinned one; the Windows self-test used the call operator
+  on a GUI-subsystem binary, which PowerShell does not wait for, so a
+  broken bundle could have passed its own check; and the actions were on a
+  Node version GitHub is retiring.
 
 - The project is on GitHub at
   [Wikimedians-of-Kerala/vcut-gui](https://github.com/Wikimedians-of-Kerala/vcut-gui),

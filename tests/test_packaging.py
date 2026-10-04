@@ -223,3 +223,35 @@ def test_the_qt_libraries_still_exist_on_the_runner():
     workflow = read(".github/workflows/release.yml")
     assert "libgl1-mesa-glx" not in workflow
     assert "libgl1" in workflow
+
+
+def test_the_windows_self_test_waits_for_the_app():
+    # console=False makes a GUI-subsystem binary, which PowerShell does not
+    # wait for: the call operator would read $LASTEXITCODE before the app
+    # had finished, so a broken bundle could pass its own check.
+    script = read("packaging/build-windows.ps1")
+    assert "Start-Process" in script
+    assert "-Wait" in script
+    assert "--self-test" in script
+
+
+def test_actions_are_not_on_deprecated_node():
+    # GitHub is forcing Node 20 actions onto Node 24; these are the versions
+    # that target it natively.
+    for name in (".github/workflows/release.yml", ".github/workflows/tests.yml"):
+        workflow = read(name)
+        assert "actions/checkout@v4" not in workflow, name
+        assert "actions/upload-artifact@v4" not in workflow, name
+        assert "astral-sh/setup-uv@v5" not in workflow, name
+
+
+def test_the_version_is_declared_once_and_agrees():
+    # Two places hold it; a release where they disagree ships a wheel
+    # labelled differently from the application's own About box.
+    import tomllib
+
+    declared = tomllib.loads(read("pyproject.toml"))["project"]["version"]
+    module = read("src/vcut/__init__.py")
+    assert f'__version__ = "{declared}"' in module, module
+    # And the changelog should have an entry for it.
+    assert f"## {declared}" in read("CHANGELOG.md")

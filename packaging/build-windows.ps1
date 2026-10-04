@@ -28,13 +28,24 @@ if (-not (Test-Path dist\vcut-gui\vcut-gui.exe)) {
 Write-Host "==> Checking the bundle starts"
 # Catches entry-point and missing-import faults, which only appear once the
 # app runs outside a Python environment.
+#
+# Start-Process -Wait, not the call operator: console=False in the spec makes
+# this a GUI-subsystem binary, which PowerShell does not wait for, so
+# $LASTEXITCODE would be read before the app had finished -- or not set at
+# all. Start-Process waits and hands back the real exit code.
 Push-Location dist\vcut-gui
 $env:QT_QPA_PLATFORM = "offscreen"
-& .\vcut-gui.exe --self-test
-$started = $LASTEXITCODE
-Remove-Item Env:\QT_QPA_PLATFORM
-Pop-Location
-if ($started -ne 0) { throw "the built application failed to start" }
+try {
+    $run = Start-Process -FilePath ".\vcut-gui.exe" -ArgumentList "--self-test" `
+        -Wait -PassThru -NoNewWindow
+    $started = $run.ExitCode
+} finally {
+    Remove-Item Env:\QT_QPA_PLATFORM -ErrorAction SilentlyContinue
+    Pop-Location
+}
+if ($started -ne 0) {
+    throw "the built application failed to start (exit code $started)"
+}
 
 Write-Host "==> Adding the documentation"
 Copy-Item INSTALL.md dist\vcut-gui\
