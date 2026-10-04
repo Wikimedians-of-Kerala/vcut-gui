@@ -55,10 +55,13 @@ def test_applying_a_theme_also_sets_a_stylesheet(qt_app):
 
 
 def test_the_stylesheet_gives_controls_room(qt_app):
-    # The default Qt metrics are too tight; these are what was raised.
+    # The default Qt metrics are too tight. Buttons and fields share one
+    # height so a field beside its button lines up.
+    from vcut.gui.theme import FIELD_HEIGHT
+
     sheet = stylesheet(Theme.DARK)
-    assert "min-height: 32px" in sheet      # buttons
-    assert "min-height: 30px" in sheet      # combo boxes and line edits
+    assert FIELD_HEIGHT >= 28
+    assert f"min-height: {FIELD_HEIGHT}px" in sheet
 
 
 def test_the_current_step_is_styled_distinctly(qt_app):
@@ -126,3 +129,58 @@ def test_the_step_bar_carries_the_screen_description(qt_app):
     bar.set_current(2)
     assert STEPS[2][1] in bar.caption.text()
     assert "Step 3 of 4" in bar.caption.text()
+
+
+# -- consistent spacing ----------------------------------------------------
+
+
+def test_fields_are_padded_less_inside_than_the_gap_around_them(qt_app):
+    # The reported bug: generous padding inside a field with a tight gap
+    # between rows made the text look closer to other rows than to its own
+    # border.
+    from vcut.gui.theme import FIELD_PADDING_V, SPACE_ROW
+
+    assert FIELD_PADDING_V * 2 < SPACE_ROW
+
+
+def test_the_spacing_scale_increases(qt_app):
+    from vcut.gui.theme import SPACE_EDGE, SPACE_GROUP, SPACE_ROW, SPACE_TIGHT
+
+    assert SPACE_TIGHT < SPACE_ROW < SPACE_GROUP <= SPACE_EDGE
+
+
+def test_fields_and_buttons_share_a_height(qt_app):
+    # A row of a field beside its button should line up.
+    sheet = stylesheet(Theme.DARK)
+    assert sheet.count("min-height: 30px") >= 2
+
+
+def test_a_note_sits_with_its_field_not_in_its_own_row(qt_app):
+    from PySide6.QtWidgets import QLabel, QLineEdit
+
+    from vcut.gui.widgets import with_note
+
+    field = QLineEdit()
+    note = QLabel("explanation")
+    holder = with_note(field, note)
+    assert field.parent() is holder
+    assert note.parent() is holder
+    assert holder.layout().spacing() < 8
+
+
+def test_with_note_accepts_several_notes(qt_app):
+    from PySide6.QtWidgets import QCheckBox, QLabel, QLineEdit
+
+    from vcut.gui.widgets import with_note
+
+    holder = with_note(QLineEdit(), QCheckBox("option"), QLabel("hint"))
+    assert holder.layout().count() == 3
+
+
+def test_the_setup_form_has_no_orphan_rows(qt_app):
+    # Every note belongs to a field; an addRow("", ...) would float between
+    # two rows instead.
+    from pathlib import Path
+
+    source = Path("src/vcut/gui/screen_setup.py").read_text(encoding="utf-8")
+    assert 'addRow("", ' not in source

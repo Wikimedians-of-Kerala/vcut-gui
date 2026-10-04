@@ -31,9 +31,10 @@ from ..models import format_timecode
 from ..naming import output_path, unique_path
 from . import icons
 from .progress_dialog import ConfirmJobDialog, JobProgressDialog, JobSummary
+from .theme import SPACE_EDGE, SPACE_ROW, SPACE_TIGHT
 from .state import AppState
 from .table_support import configure_table
-from .widgets import StatusLabel, human_size, row_colour
+from .widgets import StatusLabel, human_size, row_colour, space_form
 from .workers import ConvertJob, ConvertWorker, start
 
 COLUMNS = ("", "Clip", "File", "Commons name", "Metadata", "Notes")
@@ -60,8 +61,8 @@ class MetadataScreen(QWidget):
 
     def _build(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(SPACE_EDGE, SPACE_ROW, SPACE_EDGE, SPACE_ROW)
+        layout.setSpacing(SPACE_ROW)
 
         layout.addWidget(self._commons_group())
 
@@ -76,6 +77,7 @@ class MetadataScreen(QWidget):
     def _commons_group(self) -> QGroupBox:
         group = QGroupBox("Commons details applied to every clip")
         form = QFormLayout(group)
+        space_form(form)
         form.setLabelAlignment(Qt.AlignRight)
 
         self.license_field = QLineEdit(self.state.settings.commons_license)
@@ -191,7 +193,7 @@ class MetadataScreen(QWidget):
         bar = QWidget()
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(SPACE_TIGHT)
 
         self.convert_box = QComboBox()
         for fmt in OutputFormat:

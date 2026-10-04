@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..ffmpeg import MediaInfo
-from .widgets import human_duration, human_size
+from .widgets import human_duration, human_size, space_form
 
 
 def _fraction(value: str) -> str:
@@ -107,6 +107,7 @@ class MediaInfoDialog(QDialog):
 
         box = QGroupBox(title) if title else QWidget()
         form = QFormLayout(box)
+        space_form(form)
         form.setLabelAlignment(Qt.AlignRight)
         for label, value in rows:
             reading = QLabel(str(value) if value not in ("", None) else "—")

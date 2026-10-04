@@ -43,8 +43,16 @@ def _as_cut_mode(value) -> CutMode | None:
         return None
 from ..naming import COMMONS_SUBFOLDER, MP4_SUBFOLDER
 from . import icons
+from .theme import SPACE_EDGE, SPACE_GROUP, SPACE_ROW
 from .state import AppState
-from .widgets import FilePicker, StatusLabel, human_duration, human_size
+from .widgets import (
+    FilePicker,
+    StatusLabel,
+    human_duration,
+    human_size,
+    space_form,
+    with_note,
+)
 from .workers import ProbeWorker, ScheduleWorker, start
 
 VIDEO_FILTER = (
@@ -81,8 +89,8 @@ class SetupScreen(QWidget):
         scroll.setViewportMargins(0, 6, 0, 0)
         inner = QWidget()
         layout = QVBoxLayout(inner)
-        layout.setContentsMargins(16, 14, 16, 16)
-        layout.setSpacing(20)
+        layout.setContentsMargins(SPACE_EDGE, SPACE_ROW, SPACE_EDGE, SPACE_EDGE)
+        layout.setSpacing(SPACE_GROUP)
 
         layout.addWidget(self._files_group())
         layout.addWidget(self._event_group())
@@ -96,6 +104,7 @@ class SetupScreen(QWidget):
     def _files_group(self) -> QGroupBox:
         group = QGroupBox("Source files")
         form = QFormLayout(group)
+        space_form(form)
         form.setLabelAlignment(Qt.AlignRight)
 
         self.source_picker = FilePicker(
@@ -103,21 +112,20 @@ class SetupScreen(QWidget):
         )
         self.source_picker.path_changed.connect(self._source_chosen)
         self.source_status = StatusLabel("No video chosen yet.")
-        form.addRow("Source video", self.source_picker)
-        form.addRow("", self.source_status)
+        form.addRow("Source video", with_note(self.source_picker, self.source_status))
 
         self.csv_picker = FilePicker(
             "Drop the timecode CSV here, or browse…", file_filter=CSV_FILTER
         )
         self.csv_picker.path_changed.connect(self._csv_chosen)
         self.csv_status = StatusLabel("No timecode list loaded yet.")
-        form.addRow("Timecode CSV", self.csv_picker)
-        form.addRow("", self.csv_status)
+        form.addRow("Timecode CSV", with_note(self.csv_picker, self.csv_status))
         return group
 
     def _event_group(self) -> QGroupBox:
         group = QGroupBox("Conference schedule")
         form = QFormLayout(group)
+        space_form(form)
         form.setLabelAlignment(Qt.AlignRight)
 
         self.event_field = QLineEdit()
@@ -137,26 +145,21 @@ class SetupScreen(QWidget):
         row.addWidget(fetch)
         holder = QWidget()
         holder.setLayout(row)
-        form.addRow("Event", holder)
-
         self.offline_box = QCheckBox("Work offline (use the cached schedule only)")
-        form.addRow("", self.offline_box)
-
         self.event_status = StatusLabel("Metadata is optional — cutting works without it.")
-        form.addRow("", self.event_status)
+        form.addRow("Event", with_note(holder, self.offline_box, self.event_status))
         return group
 
     def _output_group(self) -> QGroupBox:
         group = QGroupBox("Output")
         form = QFormLayout(group)
+        space_form(form)
         form.setLabelAlignment(Qt.AlignRight)
 
         self.output_picker = FilePicker("Where the clips should be written", directory=True)
         self.output_picker.path_changed.connect(self._remember_output)
-        form.addRow("Folder", self.output_picker)
-
         self.output_status = StatusLabel("")
-        form.addRow("", self.output_status)
+        form.addRow("Folder", with_note(self.output_picker, self.output_status))
 
         self.filename_field = QLineEdit()
         self.filename_field.setPlaceholderText("{index:02d}-{programme}")
@@ -164,45 +167,42 @@ class SetupScreen(QWidget):
 
         self.subfolder_field = QLineEdit()
         self.subfolder_field.setPlaceholderText("optional, e.g. {room}")
-        form.addRow("Group into", self.subfolder_field)
 
         self.separate_box = QCheckBox(
             f"Keep unconverted MP4s in '{MP4_SUBFOLDER}/' and "
             f"uploadable files in '{COMMONS_SUBFOLDER}/'"
         )
         self.separate_box.setChecked(True)
-        form.addRow("", self.separate_box)
-
         hint = StatusLabel(
             "Available tokens: {index} {programme} {title} {eventyay_id} "
             "{author} {room} {track} {date} {start} {end} {event}"
         )
-        form.addRow("", hint)
+        form.addRow(
+            "Group into",
+            with_note(self.subfolder_field, self.separate_box, hint),
+        )
         return group
 
     def _encoding_group(self) -> QGroupBox:
         group = QGroupBox("Encoding")
         form = QFormLayout(group)
+        space_form(form)
         form.setLabelAlignment(Qt.AlignRight)
 
         self.format_box = QComboBox()
         for fmt in OutputFormat:
             self.format_box.addItem(fmt.label, fmt)
         self.format_box.currentIndexChanged.connect(self._format_changed)
-        form.addRow("Format", self.format_box)
-
         self.format_hint = StatusLabel("")
-        form.addRow("", self.format_hint)
+        form.addRow("Format", with_note(self.format_box, self.format_hint))
 
         self.cut_box = QComboBox()
         self.cut_box.addItem("Accurate, fast seek (recommended)", CutMode.SMART)
         self.cut_box.addItem("Stream copy — instant, snaps to keyframes", CutMode.COPY)
         self.cut_box.addItem("Accurate, decode from the start — slowest", CutMode.REENCODE)
         self.cut_box.currentIndexChanged.connect(self._cut_mode_changed)
-        form.addRow("Cutting", self.cut_box)
-
         self.cut_hint = StatusLabel("")
-        form.addRow("", self.cut_hint)
+        form.addRow("Cutting", with_note(self.cut_box, self.cut_hint))
 
         self.quality_spin = QSpinBox()
         self.quality_spin.setRange(0, 63)
@@ -211,9 +211,8 @@ class SetupScreen(QWidget):
 
         self.speed_spin = QSpinBox()
         self.speed_spin.setRange(0, 13)
-        form.addRow("Encoder speed", self.speed_spin)
         self.speed_hint = StatusLabel("")
-        form.addRow("", self.speed_hint)
+        form.addRow("Encoder speed", with_note(self.speed_spin, self.speed_hint))
 
         self.audio_field = QLineEdit()
         self.audio_field.setPlaceholderText("128k")
@@ -242,12 +241,12 @@ class SetupScreen(QWidget):
         form.addRow("Advanced", self.extra_field)
 
         self.overwrite_box = QCheckBox("Overwrite files that already exist")
-        form.addRow("", self.overwrite_box)
         self.dry_run_box = QCheckBox("Dry run — show the commands without encoding")
-        form.addRow("", self.dry_run_box)
-
         self.encoder_status = StatusLabel("")
-        form.addRow("", self.encoder_status)
+        form.addRow(
+            "",
+            with_note(self.overwrite_box, self.dry_run_box, self.encoder_status),
+        )
         return group
 
     def adopt_project(self, project) -> None:

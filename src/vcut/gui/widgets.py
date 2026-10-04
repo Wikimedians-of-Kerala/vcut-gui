@@ -117,6 +117,40 @@ class StatusLabel(QLabel):
         self.set_level(level)
 
 
+def space_form(form, *, label_gap: int = 14) -> None:
+    """Give a form the shared spacing.
+
+    Qt's default row spacing is tighter than the padding inside the fields
+    themselves, which reads as though the text is closer to other rows than
+    to its own border. Setting both here keeps every form consistent.
+    """
+    from .theme import SPACE_ROW
+
+    form.setVerticalSpacing(SPACE_ROW)
+    form.setHorizontalSpacing(label_gap)
+    form.setContentsMargins(0, 0, 0, 0)
+
+
+def with_note(widget, *notes, gap: int = 4):
+    """Pair a field with the notes and options belonging to it, as one row.
+
+    Anything added as its own ``addRow("", ...)`` picks up the full row gap,
+    which pushes it away from the field it describes and leaves it floating
+    between two rows. Keeping them in one widget means they sit just under
+    their field, and the row spacing falls between the groups instead.
+    """
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+    holder = QWidget()
+    layout = QVBoxLayout(holder)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(gap)
+    layout.addWidget(widget)
+    for note in notes:
+        layout.addWidget(note)
+    return holder
+
+
 def is_dark_theme() -> bool:
     """Whether the palette currently in force is a dark one.
 

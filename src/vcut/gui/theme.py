@@ -148,6 +148,21 @@ def _arrow_icon(colour: str, *, size: int = 10, up: bool = False) -> str:
     return target.as_posix()
 
 
+#: One spacing scale for the whole interface. Mixing ad-hoc numbers per
+#: screen is what made the padding look arbitrary: fields were generously
+#: padded inside while the gaps between them were Qt's tight default, so the
+#: text sat far from its own border but close to everything else.
+SPACE_TIGHT = 6      # between tightly-related controls, e.g. a button pair
+SPACE_ROW = 12       # between rows of a form
+SPACE_GROUP = 18     # between one section and the next
+SPACE_EDGE = 18      # from a panel's edge to its content
+
+#: Inside an input: enough to breathe, less than the gap around it.
+FIELD_PADDING_V = 4
+FIELD_PADDING_H = 9
+FIELD_HEIGHT = 30
+
+
 def stylesheet(theme: Theme) -> str:
     """Spacing and sizing shared by every screen.
 
@@ -168,8 +183,8 @@ def stylesheet(theme: Theme) -> str:
     down_rule = f"image: url({arrow_small});" if arrow_small else ""
     return f"""
     QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox {{
-        min-height: 30px;
-        padding: 7px 11px;
+        min-height: {FIELD_HEIGHT}px;
+        padding: {FIELD_PADDING_V}px {FIELD_PADDING_H}px;
         border: 1px solid {border};
         border-radius: 4px;
         background: {colours["base"]};
@@ -235,8 +250,8 @@ def stylesheet(theme: Theme) -> str:
     /* #transportButton and #stepButton override this below: Qt merges a bare
        QPushButton rule into theirs, so each must restate what it needs. */
     QPushButton {{
-        min-height: 32px;
-        padding: 9px 20px;
+        min-height: {FIELD_HEIGHT}px;
+        padding: {FIELD_PADDING_V}px 16px;
         border: 1px solid {border};
         border-radius: 5px;
         background: {colours["button"]};
@@ -265,7 +280,7 @@ def stylesheet(theme: Theme) -> str:
        border, so the groups on the setup screen are clearly separate. */
     QGroupBox {{
         margin-top: 16px;
-        padding: 18px 14px 14px 14px;
+        padding: {SPACE_EDGE + 6}px {SPACE_EDGE}px {SPACE_EDGE}px {SPACE_EDGE}px;
         border: 1px solid {border};
         border-radius: 8px;
         background: {colours["alternate"]};

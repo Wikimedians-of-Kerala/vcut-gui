@@ -27,6 +27,7 @@ from ..naming import output_path, unique_path
 from . import icons
 from .player_bar import PlayerBar
 from .progress_dialog import ConfirmJobDialog, JobProgressDialog, JobSummary
+from .theme import SPACE_EDGE, SPACE_ROW
 from .state import AppState
 from .table_support import configure_table
 from .widgets import StatusLabel, row_colour
@@ -59,8 +60,8 @@ class VerifyScreen(QWidget):
 
     def _build(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(SPACE_EDGE, SPACE_ROW, SPACE_EDGE, SPACE_ROW)
+        layout.setSpacing(SPACE_ROW)
 
         self.panes = QSplitter(Qt.Horizontal)
         self.panes.addWidget(self._player_panel())

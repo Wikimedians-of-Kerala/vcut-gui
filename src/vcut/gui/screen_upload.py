@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from ..manifest import build_entry, write_manifest
 from ..upload import check_login, commons_url, validate_for_upload
 from . import icons
+from .theme import SPACE_EDGE, SPACE_ROW, SPACE_TIGHT
 from .state import AppState
 from .table_support import configure_table
 from .widgets import StatusLabel, human_size, row_colour
@@ -48,8 +49,8 @@ class UploadScreen(QWidget):
 
     def _build(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
+        layout.setContentsMargins(SPACE_EDGE, SPACE_ROW, SPACE_EDGE, SPACE_ROW)
+        layout.setSpacing(SPACE_ROW)
 
         login_row = QHBoxLayout()
         self.login_status = StatusLabel("Checking Pywikibot…")
@@ -103,7 +104,7 @@ class UploadScreen(QWidget):
         self._actions = QWidget()
         actions = QHBoxLayout(self._actions)
         actions.setContentsMargins(0, 0, 0, 0)
-        actions.setSpacing(8)
+        actions.setSpacing(SPACE_TIGHT)
         self.summary = StatusLabel("")
         actions.addWidget(self.summary, 1)
 
