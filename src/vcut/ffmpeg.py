@@ -23,7 +23,12 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
+import tempfile
+import threading
+import time
+from collections import deque
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from enum import Enum
@@ -567,6 +572,34 @@ def _hardware_encode_args(settings: EncodingSettings, encoder: str) -> list[str]
 _PROGRESS_KEY_RE = re.compile(r"^(\w+)=(.*)$")
 
 
+def _describe_signal(number: int) -> str:
+    """Explain a signal that killed ffmpeg.
+
+    A bare "exited with code -11" tells the user nothing they can act on,
+    and the two that actually happen here have very different causes.
+    """
+    try:
+        name = signal.Signals(number).name
+    except ValueError:
+        return f"ffmpeg was killed by signal {number}."
+
+    hints = {
+        "SIGKILL": (
+            "ffmpeg was killed by the system (SIGKILL), which usually means "
+            "it ran out of memory. Try one clip at a time, or a faster "
+            "preset."
+        ),
+        "SIGSEGV": (
+            "ffmpeg crashed (SIGSEGV). This is a fault in ffmpeg or one of "
+            "its encoders, not in the file. Try a different encoder or "
+            "preset, or update ffmpeg."
+        ),
+        "SIGTERM": "ffmpeg was stopped (SIGTERM).",
+        "SIGINT": "ffmpeg was interrupted (SIGINT).",
+    }
+    return hints.get(name, f"ffmpeg was killed by {name} (signal {number}).")
+
+
 def run_command(
     command: list[str],
     duration: float,
@@ -580,49 +613,136 @@ def run_command(
     Returns the exit code. Raises :class:`FFmpegError` if the process cannot be
     started. Cancellation terminates the child and returns its exit code.
     """
+    # Progress goes to a file, not a pipe.
+    #
+    # "-progress pipe:1" only works while something keeps reading that pipe.
+    # A file has no buffer to fill, cannot wedge ffmpeg if we stop reading,
+    # and still holds the last report if the process dies -- so a crash can
+    # be described by how far it got.
+    progress_file: Path | None = None
+    if any(part == "pipe:1" for part in command):
+        handle, name = tempfile.mkstemp(prefix="vcut-progress-", suffix=".txt")
+        os.close(handle)
+        progress_file = Path(name)
+        command = [str(progress_file) if part == "pipe:1" else part
+                   for part in command]
+
     try:
         process = subprocess.Popen(
             command,
-            stdout=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
             **_no_window_kwargs(),
         )
     except OSError as exc:
+        if progress_file:
+            progress_file.unlink(missing_ok=True)
         raise FFmpegError(f"could not start ffmpeg: {exc}") from exc
 
-    assert process.stdout is not None
-    for line in process.stdout:
+    assert process.stderr is not None
+
+    # stderr still has to be drained while ffmpeg runs, not after it exits.
+    #
+    # ffmpeg writes steadily to stderr, and a pipe holds only about 64 KB.
+    # Letting it fill blocks ffmpeg on its next write: progress stops and the
+    # encode appears to freeze part-way through with the processor idle. On a
+    # long clip that happens every time.
+    #
+    # The tail is capped because a failing ffmpeg can emit a warning per
+    # frame, and the last lines are the ones that say what went wrong.
+    stderr_tail: deque[str] = deque(maxlen=200)
+
+    def drain_stderr() -> None:
+        for raw in process.stderr:  # type: ignore[union-attr]
+            text = raw.rstrip()
+            if text:
+                stderr_tail.append(text)
+
+    reader = threading.Thread(target=drain_stderr, daemon=True)
+    reader.start()
+
+    try:
+        _follow_progress(
+            process, progress_file, duration,
+            on_progress=on_progress, should_cancel=should_cancel,
+        )
+        process.wait()
+    finally:
+        reader.join(timeout=5)
+        if progress_file:
+            progress_file.unlink(missing_ok=True)
+
+    if on_log:
+        for text in stderr_tail:
+            on_log(text)
+
+    # A negative code is a signal, which otherwise reaches the user as the
+    # bare and unhelpful "ffmpeg exited with code -11".
+    code = process.returncode
+    if code is not None and code < 0 and on_log:
+        on_log(_describe_signal(-code))
+    return code
+
+
+def _follow_progress(
+    process: subprocess.Popen,
+    progress_file: Path | None,
+    duration: float,
+    *,
+    on_progress: Callable[[float], None] | None,
+    should_cancel: Callable[[], bool] | None,
+) -> None:
+    """Watch ffmpeg until it finishes, reporting how far it has got."""
+    offset = 0
+    while process.poll() is None:
         if should_cancel and should_cancel():
             process.terminate()
             try:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 process.kill()
-            break
+            return
 
-        line = line.strip()
-        match = _PROGRESS_KEY_RE.match(line)
+        if progress_file and on_progress and duration > 0:
+            offset = _read_progress(progress_file, offset, duration, on_progress)
+        time.sleep(0.2)
+
+    # One last read: the final lines are usually written as ffmpeg exits.
+    if progress_file and on_progress and duration > 0:
+        _read_progress(progress_file, offset, duration, on_progress)
+
+
+def _read_progress(
+    path: Path,
+    offset: int,
+    duration: float,
+    on_progress: Callable[[float], None],
+) -> int:
+    """Read whatever ffmpeg has appended since `offset`; return the new one."""
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            handle.seek(offset)
+            chunk = handle.read()
+            offset = handle.tell()
+    except OSError:
+        return offset
+
+    for line in chunk.splitlines():
+        match = _PROGRESS_KEY_RE.match(line.strip())
         if not match:
             continue
         key, value = match.groups()
-        if key == "out_time_ms" and on_progress and duration > 0:
+        if key == "out_time_ms":
             try:
                 seconds = int(value) / 1_000_000
             except ValueError:
                 continue
             on_progress(max(0.0, min(1.0, seconds / duration)))
-        elif key == "progress" and value == "end" and on_progress:
+        elif key == "progress" and value == "end":
             on_progress(1.0)
-
-    stderr = process.stderr.read() if process.stderr else ""
-    process.wait()
-    if stderr and on_log:
-        for line in stderr.splitlines():
-            if line.strip():
-                on_log(line.rstrip())
-    return process.returncode
+    return offset
 
 
 def _no_window_kwargs() -> dict:

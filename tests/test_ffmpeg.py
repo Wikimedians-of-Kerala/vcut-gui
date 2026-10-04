@@ -155,3 +155,127 @@ def test_first_vp9_pass_discards_its_output():
     command = build_convert_command("a.mp4", "a.webm", settings, pass_number=1)
     assert command[command.index("-pass") + 1] == "1"
     assert "null" in command
+
+
+# -- running ---------------------------------------------------------------
+
+
+def test_a_chatty_command_does_not_deadlock(tmp_path):
+    """stderr must be drained while the process runs, not after it exits.
+
+    A pipe holds about 64 KB, so a child that writes more than that to
+    stderr blocks forever unless something is draining it. This writes far
+    more than 64 KB while also reporting progress, so it hangs outright
+    without the fix.
+
+    Progress is written to the file named by the "pipe:1" placeholder, which
+    run_command substitutes -- the same path ffmpeg takes.
+    """
+    import sys
+
+    from vcut.ffmpeg import run_command
+
+    script = tmp_path / "chatty.py"
+    script.write_text(
+        "import sys\n"
+        "target = sys.argv[sys.argv.index('-progress') + 1]\n"
+        "with open(target, 'w', encoding='utf-8') as out:\n"
+        "    for i in range(20000):\n"
+        "        sys.stderr.write('noise %d: ' % i + 'x' * 60 + '\\n')\n"
+        "        if i % 2000 == 0:\n"
+        "            out.write('out_time_ms=%d\\n' % (i * 1000))\n"
+        "            out.flush()\n"
+        "    out.write('progress=end\\n')\n",
+        encoding="utf-8",
+    )
+
+    seen: list[float] = []
+    logs: list[str] = []
+    code = run_command(
+        [sys.executable, str(script), "-progress", "pipe:1"], 20.0,
+        on_progress=seen.append, on_log=logs.append,
+    )
+
+    assert code == 0
+    assert seen, "no progress was reported"
+    assert logs, "stderr was not captured"
+
+
+def test_progress_goes_to_a_file_not_a_pipe(tmp_path):
+    """The "pipe:1" placeholder is replaced with a real path.
+
+    A pipe only works while something keeps reading it; a file cannot wedge
+    ffmpeg, and still holds the last report if the process dies.
+    """
+    import sys
+
+    from vcut.ffmpeg import run_command
+
+    script = tmp_path / "check.py"
+    script.write_text(
+        "import sys\n"
+        "target = sys.argv[sys.argv.index('-progress') + 1]\n"
+        "assert target != 'pipe:1', 'the placeholder was not replaced'\n"
+        "with open(target, 'w', encoding='utf-8') as out:\n"
+        "    out.write('out_time_ms=5000000\\n')\n"
+        "    out.write('progress=end\\n')\n",
+        encoding="utf-8",
+    )
+
+    seen: list[float] = []
+    code = run_command(
+        [sys.executable, str(script), "-progress", "pipe:1"], 10.0,
+        on_progress=seen.append,
+    )
+
+    assert code == 0
+    assert seen and seen[-1] == 1.0
+
+
+def test_the_progress_file_is_cleaned_up(tmp_path):
+    import glob
+    import sys
+    import tempfile
+
+    from vcut.ffmpeg import run_command
+
+    script = tmp_path / "noop.py"
+    script.write_text("pass\n", encoding="utf-8")
+
+    before = set(glob.glob(f"{tempfile.gettempdir()}/vcut-progress-*"))
+    run_command([sys.executable, str(script), "-progress", "pipe:1"], 1.0)
+    after = set(glob.glob(f"{tempfile.gettempdir()}/vcut-progress-*"))
+
+    assert after == before, "a progress file was left behind"
+
+
+def test_the_captured_log_is_bounded(tmp_path):
+    # A failing ffmpeg can emit a warning per frame; keeping every line of a
+    # nine-hour encode would be a lot of memory for no benefit.
+    import sys
+
+    from vcut.ffmpeg import run_command
+
+    script = tmp_path / "flood.py"
+    script.write_text(
+        "import sys\n"
+        "for i in range(5000):\n"
+        "    sys.stderr.write('line %d\\n' % i)\n",
+        encoding="utf-8",
+    )
+
+    logs: list[str] = []
+    run_command([sys.executable, str(script)], 1.0, on_log=logs.append)
+
+    assert len(logs) <= 200
+    # The tail is what says why it failed, so that is what must survive.
+    assert logs[-1] == "line 4999"
+
+
+def test_a_signal_is_explained_rather_than_shown_as_a_number():
+    from vcut.ffmpeg import _describe_signal
+
+    assert "memory" in _describe_signal(9).lower()        # SIGKILL
+    assert "crash" in _describe_signal(11).lower()        # SIGSEGV
+    # An unknown signal still produces something readable.
+    assert "signal" in _describe_signal(99).lower()
