@@ -2,10 +2,27 @@
 
 ## Unreleased
 
+- A help window: `Help > How to use vcut`, or F1. Twelve topics covering
+  each step, the timecode list, signing in, and what to do when something
+  goes wrong. It opens on the topic for the screen you are looking at, and
+  searches the text rather than only the headings, so looking for
+  "keyframe" finds the page that explains keyframes.
+- Two written guides: [docs/GUIDE.md](docs/GUIDE.md) follows a day's
+  recording from start to finish, and [docs/BUILDING.md](docs/BUILDING.md)
+  covers building the Linux and Windows packages.
+
+- **The Linux package was carrying 119 MB of Chromium that could not run.**
+  Excluding `QtWebEngineCore` alone stopped PyInstaller collecting
+  Chromium's resource files while its shared libraries still arrived as
+  transitive dependencies — so the download was 222 MB instead of 103 MB,
+  and the application reported browser sign-in as available when it would
+  have failed on use. Both are fixed: the exclusion is now complete, and
+  the login window correctly offers a bot password instead.
+
 - Keyboard shortcuts throughout, following what video editors have settled
   on: Space to play, J K L to shuttle, I and O to mark in and out, comma
   and full stop to step a frame. `Help > Keyboard shortcuts` (F1) lists
-  them all, with a search box.
+  them all, with a search box (`Ctrl+?`, or Shift+F1).
 
 - Signing in to Wikimedia Commons from the app, with no terminal. A bot
   password is stored in the computer's keychain and the Pywikibot

@@ -262,8 +262,17 @@ class MainWindow(QMainWindow):
         self._register_shortcuts(view_menu)
 
         help_menu = self.menuBar().addMenu("&Help")
+        # F1 is the help key everywhere, so it opens the guide; the shortcut
+        # list keeps the key it had as a second binding of its own.
+        help_action = QAction("&How to use vcut…", self)
+        help_action.setShortcut(QKeySequence("F1"))
+        help_action.triggered.connect(self._show_help)
+        help_menu.addAction(help_action)
+
         shortcuts_action = QAction("&Keyboard shortcuts…", self)
-        shortcuts_action.setShortcuts([QKeySequence("F1"), QKeySequence("Ctrl+?")])
+        shortcuts_action.setShortcuts(
+            [QKeySequence("Ctrl+?"), QKeySequence("Shift+F1")]
+        )
         shortcuts_action.triggered.connect(self._show_shortcuts)
         help_menu.addAction(shortcuts_action)
         help_menu.addSeparator()
@@ -445,6 +454,12 @@ class MainWindow(QMainWindow):
 
     def _previous_step(self) -> None:
         self.go_to(self.stack.currentIndex() - 1)
+
+    def _show_help(self) -> None:
+        """Open the guide, on the topic for the screen in front of them."""
+        from .help_dialog import HelpDialog
+
+        HelpDialog(self, screen=self._current_screen_name()).exec()
 
     def _show_shortcuts(self) -> None:
         from .shortcuts_dialog import ShortcutsDialog

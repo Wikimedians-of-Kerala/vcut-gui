@@ -6,6 +6,10 @@ Commons file descriptions, and upload them.
 
 Built for Wikimedia conference video teams. Runs on Windows and Linux.
 
+**[How to use it](docs/GUIDE.md)** walks through a day's recording from start
+to finish. The same guide is in the program under `Help > How to use vcut`
+(or `F1`), which opens on whichever step you are looking at.
+
 ## The four screens
 
 **1. Set up** — pick the source video and the CSV of timecodes, point at the
@@ -58,9 +62,9 @@ carries over.
 | `Ctrl`+`1`…`4` | Jump to a step |
 | `Ctrl`+`+` / `-` / `0` | Zoom the timeline in, out, or to fit |
 
-`Help > Keyboard shortcuts` (or `F1`) lists everything, with a search box.
-Playback keys only act on the verify screen, so they cannot move a playhead
-you are not looking at.
+`Help > Keyboard shortcuts` (or `Ctrl+?`) lists everything, with a search
+box. Playback keys only act on the verify screen, so they cannot move a
+playhead you are not looking at.
 
 ## Signing in to Commons
 
@@ -246,9 +250,19 @@ The whole schedule is fetched once and cached, then looked up locally, which is
 faster and kinder to the server than one request per clip. If the network is
 down the cache is used, and offline mode skips the network entirely.
 
-## Packaging
+## Building the packages
 
-See [packaging/README.md](packaging/README.md).
+[docs/BUILDING.md](docs/BUILDING.md) covers building the Linux and Windows
+packages, what is inside them, and what to do when a build fails. In short:
+
+```sh
+./packaging/build-linux.sh                                            # Linux
+powershell -ExecutionPolicy Bypass -File packaging\build-windows.ps1   # Windows
+uv build                                                              # wheel
+```
+
+PyInstaller does not cross-compile, so each package is built on its own
+platform; pushing a version tag builds all three in CI.
 
 ## Tests
 

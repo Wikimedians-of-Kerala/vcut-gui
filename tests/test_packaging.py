@@ -123,3 +123,35 @@ def test_the_install_guide_covers_both_platforms():
 
 def test_the_install_guide_says_ffmpeg_is_not_bundled():
     assert "never bundled" in read("INSTALL.md")
+
+
+# -- Qt WebEngine ----------------------------------------------------------
+
+
+def test_webengine_is_excluded_completely():
+    # Excluding QtWebEngineCore alone stops its hook collecting Chromium's
+    # .pak resources, but the shared libraries still arrive as transitive
+    # dependencies. The result carries ~150 MB of Chromium that cannot start
+    # while webengine_available() still reports True, so the login window
+    # offers a browser that then fails. Both modules have to go.
+    spec = read("vcut-gui.spec")
+    for module in ("PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets"):
+        assert module in spec, module
+
+
+def test_webengine_binaries_are_pruned():
+    # The excludes alone do not remove the shared libraries; the spec filters
+    # them out of a.binaries and a.datas by name.
+    spec = read("vcut-gui.spec")
+    assert "a.binaries = TOC(" in spec
+    assert "a.datas = TOC(" in spec
+    assert "qt6webengine" in spec.lower()
+
+
+def test_the_app_detects_a_missing_webengine_rather_than_assuming():
+    # Without this check the packaged build would offer browser sign-in and
+    # fail when it was used.
+    source = read("src/vcut/gui/browser_login.py")
+    assert "def webengine_available" in source
+    login = read("src/vcut/gui/login_dialog.py")
+    assert "webengine_available()" in login

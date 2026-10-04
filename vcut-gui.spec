@@ -32,10 +32,40 @@ a = Analysis(
     runtime_hooks=[],
     # Pywikibot is optional: leaving it out keeps the build small, and the
     # upload screen explains how to install it.
-    excludes=["tkinter", "matplotlib", "numpy", "PySide6.QtWebEngineCore"],
+    #
+    # Qt WebEngine is an embedded Chromium: around 150 MB, several times the
+    # rest of the bundle. Excluding QtWebEngineCore alone is not enough --
+    # its hook stops collecting Chromium's .pak resources while the shared
+    # libraries still arrive as transitive dependencies, leaving a build that
+    # carries the weight and reports the browser as available but cannot
+    # actually start it. Both modules have to go, and the stragglers are
+    # pruned below. Browser sign-in is then unavailable in packaged builds,
+    # which the login window says; bot passwords work for every account.
+    excludes=[
+        "tkinter",
+        "matplotlib",
+        "numpy",
+        "PySide6.QtWebEngineCore",
+        "PySide6.QtWebEngineWidgets",
+        "PySide6.QtWebEngineQuick",
+    ],
     cipher=block_cipher,
     noarchive=False,
 )
+
+# PyInstaller still pulls the WebEngine shared libraries in behind the
+# excludes, as dependencies of Qt libraries that are genuinely needed. They
+# are useless without Chromium's resource files, so drop them by name.
+_WEBENGINE = ("qtwebengine", "qt6webengine")
+
+
+def _is_webengine(entry) -> bool:
+    name = entry[0].lower()
+    return any(marker in name for marker in _WEBENGINE)
+
+
+a.binaries = TOC([entry for entry in a.binaries if not _is_webengine(entry)])
+a.datas = TOC([entry for entry in a.datas if not _is_webengine(entry)])
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
