@@ -1,57 +1,142 @@
 name: Build release packages
 
-# Builds the Windows and Linux packages whenever a version tag is pushed,
-# and attaches them to the release. Can also be run by hand to check the
-# packaging still works.
+# Builds the Linux and Windows packages, and the wheel, whenever a version
+# tag is pushed, then attaches them to the release.
+#
+# Can also be run by hand from the Actions tab to check that packaging still
+# works, which is worth doing after any change to dependencies or to the
+# PyInstaller spec — cheaper than finding the breakage at release time.
+#
+# Windows runners are why this is on GitHub: PyInstaller cannot
+# cross-compile, and GitHub gives public repositories free Windows runners.
+
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+env:
+  # The interpreter the packages are built against. The bundle embeds it.
+  VCUT_PYTHON: "3.12"
+
 jobs:
-  linux:
+  # A tag should not produce a release if the suite is red. This runs first
+  # and everything else waits on it.
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
       - name: Install the Qt runtime libraries
         run: |
           sudo apt-get update
           sudo apt-get install -y libegl1 libgl1 libxkbcommon-x11-0 \
             libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0
-      - name: Install Python
-        run: uv python install 3.12
-      - name: Build
-        run: ./packaging/build-linux.sh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: vcut-gui-linux
-          path: dist/vcut-gui-linux.tar.gz
+      - run: uv python install ${{ env.VCUT_PYTHON }}
+      - run: uv sync --extra dev
+      - name: Run the tests
+        run: uv run pytest -q
+        env:
+          QT_QPA_PLATFORM: offscreen
 
-  windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - name: Install Python
-        run: uv python install 3.12
-      - name: Build
-        run: powershell -ExecutionPolicy Bypass -File packaging\build-windows.ps1
-      - uses: actions/upload-artifact@v4
-        with:
-          name: vcut-gui-windows
-          path: dist/vcut-gui-windows.zip
-
-  wheel:
+  linux:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install the Qt runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon-x11-0 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0
+      - run: uv python install ${{ env.VCUT_PYTHON }}
+      - name: Build
+        run: ./packaging/build-linux.sh
+      # The build script already starts the bundle; this checks the archive
+      # itself, which is what people actually download.
+      - name: Check the archive
+        run: |
+          test -f dist/vcut-gui-linux.tar.gz
+          tar tzf dist/vcut-gui-linux.tar.gz > /dev/null
+          tar tzf dist/vcut-gui-linux.tar.gz | grep -q 'vcut-gui/vcut-gui$'
+          echo "Size: $(du -h dist/vcut-gui-linux.tar.gz | cut -f1)"
+          # Qt WebEngine is excluded deliberately; if it reappears the
+          # download roughly doubles for a browser that cannot start.
+          if tar tzf dist/vcut-gui-linux.tar.gz | grep -qi webengine; then
+            echo "::error::Qt WebEngine is back in the bundle (see docs/BUILDING.md)"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vcut-gui-linux
+          path: dist/vcut-gui-linux.tar.gz
+          if-no-files-found: error
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv python install ${{ env.VCUT_PYTHON }}
+      - name: Build
+        run: powershell -ExecutionPolicy Bypass -File packaging\build-windows.ps1
+      - name: Check the archive
+        shell: pwsh
+        run: |
+          if (-not (Test-Path dist\vcut-gui-windows.zip)) {
+            throw "the archive was not produced"
+          }
+          $size = (Get-Item dist\vcut-gui-windows.zip).Length / 1MB
+          Write-Host ("Size: {0:N1} MB" -f $size)
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path dist\vcut-gui-windows.zip))
+          try {
+            $names = $zip.Entries | ForEach-Object { $_.FullName }
+            # Match on the leaf rather than a fixed prefix: Compress-Archive
+            # has varied the leading folder between PowerShell versions, and
+            # a false failure here lands in the middle of a release.
+            if (-not ($names | Where-Object { $_ -match 'vcut-gui\.exe$' })) {
+              Write-Host "Archive contains:"; $names | Select-Object -First 20
+              throw "vcut-gui.exe is not in the archive"
+            }
+            if ($names | Where-Object { $_ -match "(?i)webengine" }) {
+              throw "Qt WebEngine is back in the bundle (see docs/BUILDING.md)"
+            }
+          } finally { $zip.Dispose() }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vcut-gui-windows
+          path: dist/vcut-gui-windows.zip
+          if-no-files-found: error
+
+  wheel:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
       - run: uv build
+      # A wheel with broken metadata installs fine here and fails on PyPI.
+      - name: Check the metadata
+        run: uv run --with twine twine check dist/*
       - uses: actions/upload-artifact@v4
         with:
           name: vcut-gui-wheel
           path: dist/*
+          if-no-files-found: error
 
   release:
     needs: [linux, windows, wheel]
@@ -63,9 +148,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
+      - name: List what is being released
+        run: ls -lh artifacts/
       - uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*
+          files: artifacts/*
           generate_release_notes: true
           body: |
             See [CHANGELOG.md](../../blob/master/CHANGELOG.md) for what

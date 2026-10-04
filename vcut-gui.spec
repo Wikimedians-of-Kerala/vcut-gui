@@ -64,8 +64,10 @@ def _is_webengine(entry) -> bool:
     return any(marker in name for marker in _WEBENGINE)
 
 
-a.binaries = TOC([entry for entry in a.binaries if not _is_webengine(entry)])
-a.datas = TOC([entry for entry in a.datas if not _is_webengine(entry)])
+# Plain lists, not TOC(): TOC is deprecated in PyInstaller 6 and reaches the
+# spec only as an injected global, which is not something to depend on.
+a.binaries = [entry for entry in a.binaries if not _is_webengine(entry)]
+a.datas = [entry for entry in a.datas if not _is_webengine(entry)]
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 

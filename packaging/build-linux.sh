@@ -13,7 +13,9 @@ cd "$(dirname "$0")/.."
 rm -rf build dist/vcut-gui dist/vcut-gui-linux.tar.gz
 
 echo "==> Preparing the build environment"
-uv venv --quiet --clear .venv-build
+# Pin the interpreter rather than taking whatever uv finds: a CI image may
+# ship several, and the bundle embeds whichever one builds it.
+uv venv --quiet --clear --python "${VCUT_PYTHON:-3.12}" .venv-build
 uv pip install --quiet --python .venv-build/bin/python -e . pyinstaller
 
 echo "==> Building"

@@ -167,22 +167,65 @@ This matters only for the `.exe`. If you ever move the project, the Linux
 package and the wheel build anywhere; the Windows job is the part that needs
 a host offering free Windows runners.
 
-It runs when you **push a version tag**:
+### Setting it up
+
+There is nothing to install and no secret to configure. The workflow file is
+already in the repository, and GitHub picks it up on its own:
+
+1. **Push the repository to GitHub**, if it is not there yet. The workflow
+   appears under the **Actions** tab within a minute.
+2. **Make sure Actions is enabled.** On a fresh repository it usually is;
+   on a fork it has to be switched on. *Settings → Actions → General →
+   Allow all actions*.
+3. **Check the workflow may write releases.** *Settings → Actions → General
+   → Workflow permissions* must be **Read and write**, or the release job
+   cannot attach the packages. The workflow asks for `contents: write`
+   itself, but the repository setting can still override it.
+4. **Keep the repository public** if you want the Windows build to stay
+   free. Private repositories bill Windows minutes at double rate against
+   a 2,000-minute monthly allowance.
+
+The `GITHUB_TOKEN` the release job uses is provided automatically. You do
+not create it, and there is no secret to paste anywhere.
+
+### Trying it before you tag
+
+Run it by hand first — **Actions → Build release packages → Run workflow**.
+That runs the tests and both builds, uploads the packages as workflow
+artifacts, and skips the release job, so you can download and try the
+`.exe` without publishing anything. Doing this once before the first real
+tag is worth the ten minutes.
+
+### What the pipeline does
+
+```
+test ──┬── linux  ──┐
+       ├── windows ─┼── release   (tags only)
+       └── wheel ───┘
+```
+
+The tests run first and everything waits on them, so **a tag cannot produce
+a release while the suite is red**. Each build then checks its own archive
+before uploading: that the file exists, that it unpacks, that the executable
+is inside it, and that Qt WebEngine has not crept back in — the fault
+described above, which doubles the download for a browser that cannot start.
+
+The wheel is checked with `twine check`, because broken metadata installs
+fine locally and fails on PyPI.
+
+### It runs when you push a version tag
 
 ```sh
 git tag -a v1.0.3 -m "Release 1.0.3"
 git push origin v1.0.3
 ```
 
-and attaches the artifacts to the GitHub release.
+Ten minutes or so later the release is on the Releases page with all three
+packages attached.
 
-You can also run it by hand from the Actions tab (**Run workflow**) to check
-packaging still works without cutting a release. Doing that after any change
-to dependencies or to the spec file is cheaper than discovering the breakage
-at release time.
-
-> **Note** — the artifacts are only attached to a release for a tag push.
-> A manual run uploads them as workflow artifacts instead.
+> **The artifacts are only attached to a release for a tag push.** A manual
+> run uploads them as workflow artifacts instead, which is what makes it
+> safe to use as a rehearsal.
 
 ---
 

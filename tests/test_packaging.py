@@ -143,9 +143,14 @@ def test_webengine_binaries_are_pruned():
     # The excludes alone do not remove the shared libraries; the spec filters
     # them out of a.binaries and a.datas by name.
     spec = read("vcut-gui.spec")
-    assert "a.binaries = TOC(" in spec
-    assert "a.datas = TOC(" in spec
+    assert "a.binaries = [" in spec
+    assert "a.datas = [" in spec
     assert "qt6webengine" in spec.lower()
+    # TOC is deprecated in PyInstaller 6 and only reaches a spec as an
+    # injected global; plain lists do the same job without that dependency.
+    # Checked against code lines, since the comment above mentions it.
+    code = [line for line in spec.splitlines() if not line.lstrip().startswith("#")]
+    assert not any("TOC(" in line for line in code)
 
 
 def test_the_app_detects_a_missing_webengine_rather_than_assuming():
@@ -155,3 +160,41 @@ def test_the_app_detects_a_missing_webengine_rather_than_assuming():
     assert "def webengine_available" in source
     login = read("src/vcut/gui/login_dialog.py")
     assert "webengine_available()" in login
+
+
+# -- the release workflow --------------------------------------------------
+
+
+def _release_workflow() -> dict:
+    import yaml
+
+    return yaml.safe_load(read(".github/workflows/release.yml"))
+
+
+def test_a_tag_cannot_release_without_passing_tests():
+    # Without this gate a red suite still produces a release, and the first
+    # anyone knows of it is a broken download.
+    jobs = _release_workflow()["jobs"]
+    assert "test" in jobs
+    for name in ("linux", "windows", "wheel"):
+        needs = jobs[name].get("needs")
+        needs = [needs] if isinstance(needs, str) else (needs or [])
+        assert "test" in needs, f"{name} does not wait for the tests"
+
+
+def test_the_release_waits_for_every_package():
+    needs = _release_workflow()["jobs"]["release"]["needs"]
+    assert set(needs) == {"linux", "windows", "wheel"}
+
+
+def test_both_platforms_are_built():
+    jobs = _release_workflow()["jobs"]
+    assert jobs["linux"]["runs-on"].startswith("ubuntu")
+    assert jobs["windows"]["runs-on"].startswith("windows")
+
+
+def test_missing_artifacts_fail_rather_than_release_nothing():
+    # upload-artifact is silent by default when it finds no files, which
+    # would publish a release with pieces quietly missing.
+    workflow = read(".github/workflows/release.yml")
+    assert workflow.count("if-no-files-found: error") == 3

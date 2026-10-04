@@ -9,7 +9,10 @@ $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
 Write-Host "==> Preparing the build environment"
-uv venv --quiet --clear .venv-build
+# Pin the interpreter rather than taking whatever uv finds: a CI image may
+# ship several, and the bundle embeds whichever one builds it.
+$python = if ($env:VCUT_PYTHON) { $env:VCUT_PYTHON } else { "3.12" }
+uv venv --quiet --clear --python $python .venv-build
 uv pip install --quiet --python .venv-build\Scripts\python.exe -e . pyinstaller
 
 Write-Host "==> Building"
