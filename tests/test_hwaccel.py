@@ -66,11 +66,22 @@ def test_capabilities_survive_the_cache(tmp_path, monkeypatch):
 
 
 def test_a_stale_cache_is_ignored(tmp_path, monkeypatch):
+    import time
+
     import vcut.hwaccel as module
 
     monkeypatch.setattr(module, "_cache_file", lambda: tmp_path / "hw.json")
-    save_cached(caps(H264))
-    assert load_cached(max_age=0) is None
+
+    # Age the entry rather than asking whether a brand-new one has already
+    # expired. With max_age=0 that question is a race: on Windows the clock
+    # is coarse enough that the write and the read usually land in the same
+    # tick, making the age exactly 0.0, which is not greater than 0.
+    stale = caps(H264)
+    stale.probed_at = time.time() - 60
+    save_cached(stale)
+
+    assert load_cached(max_age=30) is None
+    assert load_cached(max_age=3600) is not None
 
 
 def test_a_corrupt_cache_is_ignored(tmp_path, monkeypatch):

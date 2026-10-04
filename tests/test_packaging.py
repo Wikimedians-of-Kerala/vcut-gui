@@ -102,12 +102,27 @@ def test_there_is_a_build_script_for_each_platform():
 
 
 def test_the_build_scripts_are_executable():
-    import os
-    import stat
+    """The shell scripts must be executable for whoever clones the project.
 
-    mode = (ROOT / "packaging" / "build-linux.sh").stat().st_mode
-    assert mode & stat.S_IXUSR, "build-linux.sh is not executable"
-    assert os.access(ROOT / "packaging" / "install.sh", os.X_OK)
+    Checked against the git index rather than the filesystem: Windows has
+    no POSIX permission bits, so a checkout there reports 0o666 whatever
+    the repository says. The index mode is what every clone gets, which
+    makes it both the honest fact and the portable one.
+    """
+    import subprocess
+
+    listing = subprocess.run(
+        ["git", "ls-files", "-s", "--", "packaging"],
+        cwd=ROOT, capture_output=True, text=True, check=True,
+    ).stdout
+
+    modes = {}
+    for line in listing.splitlines():
+        meta, _, path = line.partition("\t")
+        modes[path] = meta.split()[0]
+
+    for script in ("packaging/build-linux.sh", "packaging/install.sh"):
+        assert modes.get(script) == "100755", f"{script} is {modes.get(script)}"
 
 
 def test_the_installer_can_undo_itself():
