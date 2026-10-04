@@ -23,7 +23,12 @@ from PySide6.QtWidgets import (
 )
 
 from ..manifest import build_entry, write_manifest
-from ..upload import check_login, commons_url, validate_for_upload
+from ..upload import (
+    DEFAULT_COMMENT,
+    check_login,
+    commons_url,
+    validate_for_upload,
+)
 from . import icons
 from .theme import SPACE_EDGE, SPACE_ROW, SPACE_TIGHT
 from .progress_dialog import JobProgressDialog
@@ -97,9 +102,8 @@ class UploadScreen(QWidget):
         configure_table(self.table)
         layout.addWidget(self.table, 1)
 
-        self.comment_field = QLineEdit(
-            "Uploading conference session recording with vcut-gui"
-        )
+        # Names the tool, so a file's history says where it came from.
+        self.comment_field = QLineEdit(DEFAULT_COMMENT)
         self.comment_field.setPlaceholderText("Upload summary")
         layout.addWidget(self.comment_field)
 

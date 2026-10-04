@@ -137,3 +137,62 @@ def test_a_broken_session_does_not_break_the_check(monkeypatch):
     monkeypatch.setattr(browser_login, "load_session", explode)
     status = upload.check_login()
     assert status.message
+
+
+def test_the_default_summary_names_the_tool():
+    from vcut.upload import DEFAULT_COMMENT
+
+    assert "vcut" in DEFAULT_COMMENT.lower()
+
+
+def test_an_undefined_change_tag_is_not_sent(monkeypatch):
+    """Sending a tag the wiki has not defined fails the whole upload.
+
+    Commons only accepts tags an administrator created at Special:Tags, so
+    availability is checked rather than assumed. The file matters more than
+    the label.
+    """
+    from vcut import upload
+
+    monkeypatch.setattr(upload, "_tag_allowed", None)
+    monkeypatch.setattr(upload, "tag_is_available", lambda *a, **k: False)
+    assert not upload.tag_is_available()
+
+
+def test_the_tag_check_is_remembered(monkeypatch):
+    # One request per session, not one per file.
+    from vcut import upload
+
+    calls = []
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            calls.append(1)
+            return {"paraminfo": {"modules": [{"parameters": [
+                {"name": "tags", "type": ["Vcut"]},
+            ]}]}}
+
+    monkeypatch.setattr(upload, "_tag_allowed", None)
+    import httpx
+
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: FakeResponse())
+
+    assert upload.tag_is_available() is True
+    assert upload.tag_is_available() is True
+    assert len(calls) == 1, "the wiki was asked more than once"
+
+
+def test_a_network_failure_does_not_block_the_upload(monkeypatch):
+    from vcut import upload
+
+    monkeypatch.setattr(upload, "_tag_allowed", None)
+    import httpx
+
+    def explode(*a, **k):
+        raise OSError("no network")
+
+    monkeypatch.setattr(httpx, "get", explode)
+    assert upload.tag_is_available() is False

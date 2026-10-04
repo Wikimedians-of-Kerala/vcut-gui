@@ -126,3 +126,50 @@ def test_sidecar_is_written_next_to_the_video(tmp_path):
     written = write_sidecar(video, "hello")
     assert written == tmp_path / "clip.txt"
     assert written.read_text(encoding="utf-8") == "hello"
+
+
+# -- marking what this tool uploaded ---------------------------------------
+
+
+def test_every_file_gets_the_tool_category():
+    """A maintenance category so the batch can be found and checked later."""
+    from vcut.commons import TOOL_CATEGORY, CommonsSettings, render_description
+    from vcut.models import Clip
+
+    clip = Clip(programme="A talk", start_time="00:00:00", end_time="00:10:00")
+    text, _ = render_description(clip, settings=CommonsSettings())
+    assert f"[[Category:{TOOL_CATEGORY}]]" in text
+
+
+def test_the_tool_category_comes_after_the_subject_ones():
+    # The subject categories are what a reader wants first.
+    from vcut.commons import TOOL_CATEGORY, CommonsSettings, render_description
+    from vcut.models import Clip
+
+    clip = Clip(programme="A talk", start_time="00:00:00", end_time="00:10:00")
+    text, _ = render_description(
+        clip, settings=CommonsSettings(categories=["Conference videos"])
+    )
+    assert text.index("Conference videos") < text.index(TOOL_CATEGORY)
+
+
+def test_the_tool_category_is_not_added_twice():
+    from vcut.commons import TOOL_CATEGORY, CommonsSettings, render_description
+    from vcut.models import Clip
+
+    clip = Clip(programme="A talk", start_time="00:00:00", end_time="00:10:00")
+    text, _ = render_description(
+        clip, settings=CommonsSettings(categories=[TOOL_CATEGORY])
+    )
+    assert text.count(f"[[Category:{TOOL_CATEGORY}]]") == 1
+
+
+def test_the_tool_category_can_be_turned_off():
+    from vcut.commons import TOOL_CATEGORY, CommonsSettings, render_description
+    from vcut.models import Clip
+
+    clip = Clip(programme="A talk", start_time="00:00:00", end_time="00:10:00")
+    text, _ = render_description(
+        clip, settings=CommonsSettings(tag_with_tool=False)
+    )
+    assert TOOL_CATEGORY not in text

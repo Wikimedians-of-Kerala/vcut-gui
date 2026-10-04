@@ -246,7 +246,7 @@ def upload_file(
             verify_description=False,
             ignore_warning=ignore_warnings,
             target_site=site,
-            summary=comment or "Uploading conference session recording",
+            summary=comment or DEFAULT_COMMENT,
         )
         bot.run()
     except UploadError:
@@ -255,6 +255,63 @@ def upload_file(
         raise UploadError(f"upload failed: {exc}") from exc
 
     return f"uploaded as {prepared.filename}"
+
+
+#: The change tag to mark uploads with, so a batch can be found in the
+#: recent-changes feed and in file histories.
+#:
+#: A tag only works once an administrator has defined it on the wiki, at
+#: Special:Tags. Sending an undefined one makes the upload fail outright, so
+#: this is checked against the wiki rather than assumed, and the result is
+#: remembered for the session.
+CHANGE_TAG = "Vcut"
+
+#: The edit summary when the user has not written one. It names the tool, so
+#: a file's history says where it came from even where the change tag is not
+#: available.
+DEFAULT_COMMENT = "Uploaded with vcut"
+
+_tag_allowed: bool | None = None
+
+
+def tag_is_available(session=None) -> bool:
+    """Whether this wiki accepts :data:`CHANGE_TAG` on an upload.
+
+    Asked once. An undefined tag is not an error worth failing an upload
+    over -- the file is what matters -- so an unavailable tag is simply not
+    sent.
+    """
+    global _tag_allowed
+    if _tag_allowed is not None:
+        return _tag_allowed
+
+    _tag_allowed = False
+    try:
+        import httpx
+
+        response = httpx.get(
+            "https://commons.wikimedia.org/w/api.php",
+            params={
+                "action": "paraminfo", "modules": "upload",
+                "format": "json", "formatversion": "2",
+            },
+            timeout=10,
+            headers={"User-Agent": _user_agent()},
+        )
+        response.raise_for_status()
+        for parameter in response.json()["paraminfo"]["modules"][0]["parameters"]:
+            if parameter["name"] == "tags":
+                _tag_allowed = CHANGE_TAG in (parameter.get("type") or [])
+                break
+    except Exception:  # noqa: BLE001 - never fail an upload over this
+        _tag_allowed = False
+    return _tag_allowed
+
+
+def _user_agent() -> str:
+    from .gui.browser_login import USER_AGENT
+
+    return USER_AGENT
 
 
 def _try_browser_session(prepared: CommonsFile, comment: str) -> str | None:
@@ -277,6 +334,7 @@ def _try_browser_session(prepared: CommonsFile, comment: str) -> str | None:
         name = browser_login.upload_with_session(
             session, prepared.local_path, prepared.filename,
             prepared.wikitext, comment=comment,
+            tags=CHANGE_TAG if tag_is_available() else "",
         )
     except RuntimeError as exc:
         raise UploadError(str(exc)) from exc

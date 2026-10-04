@@ -57,12 +57,34 @@ DEFAULT_TEMPLATE = _TEMPLATE_BODY
 _COMMONS_ILLEGAL = r'#<>[]|{}:/\~'
 
 
+#: Added to every upload so the batch can be found, checked or undone later.
+#: A maintenance category like this is ordinary practice on Commons: it costs
+#: the uploader nothing and gives anyone reviewing the files a single place
+#: to see what this tool produced.
+TOOL_CATEGORY = "Uploaded with vcut"
+
+
+def _categories(settings: "CommonsSettings") -> list[str]:
+    """The categories for one file, with the tool's own added last.
+
+    Last because the subject categories are what a reader wants first; the
+    maintenance one is for whoever is checking the batch.
+    """
+    categories = [c for c in settings.categories if c.strip()]
+    if settings.tag_with_tool and TOOL_CATEGORY not in categories:
+        categories.append(TOOL_CATEGORY)
+    return categories
+
+
 @dataclass
 class CommonsSettings:
     """Options governing the generated description."""
 
     license: str = "{{Cc-by-sa-4.0}}"
     categories: list[str] = field(default_factory=list)
+    #: Whether to add :data:`TOOL_CATEGORY`. On by default; off for anyone
+    #: who would rather not categorise by tool.
+    tag_with_tool: bool = True
     template: str = ""
     date_override: str = ""
     filename_template: str = "{title} - {event} ({code}).{ext}"
@@ -190,7 +212,7 @@ def render_description(
         "source": source,
         "author": author,
         "license": settings.license,
-        "categories": list(settings.categories),
+        "categories": _categories(settings),
         "language": language,
         "code": (session.code if session else clip.eventyay_id),
         "event": event_info.get("title", ""),

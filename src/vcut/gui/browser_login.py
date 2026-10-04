@@ -181,7 +181,8 @@ def make_browser_page(parent=None):
 
 
 def upload_with_session(session: Session, path, filename: str, wikitext: str,
-                        *, comment: str = "", timeout: float = 600.0) -> str:
+                        *, comment: str = "", tags: str = "",
+                        timeout: float = 600.0) -> str:
     """Upload a file using captured browser cookies.
 
     This is what makes a browser login worth having: the same cookies the
@@ -208,10 +209,14 @@ def upload_with_session(session: Session, path, filename: str, wikitext: str,
         "action": "upload",
         "filename": filename,
         "text": wikitext,
-        "comment": comment or "Uploading a conference session recording",
+        "comment": comment or "Uploaded with vcut",
         "token": token,
         "format": "json",
     }
+    # Only sent when the wiki has the tag defined: an undefined one makes
+    # the whole upload fail, and the file matters more than the label.
+    if tags:
+        data["tags"] = tags
 
     with source.open("rb") as handle:
         files = {"file": (filename, handle, "application/octet-stream")}
