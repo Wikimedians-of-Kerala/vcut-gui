@@ -227,19 +227,34 @@ artifacts, and skips the release job, so you can download and try the
 `.exe` without publishing anything. Doing this once before the first real
 tag is worth the ten minutes.
 
-### What the pipeline does
+### Two workflows, not one
 
 ```
-test ──┬── linux  ──┐
-       ├── windows ─┼── release   (tags only)
-       └── wheel ───┘
+Tests (tests.yml)              Build release packages (release.yml)
+  every push and PR              tags, and packaging changes
+  Linux + Windows                  linux  ──┐
+  Python 3.11 and 3.13             windows ─┼── release  (tags only)
+                                   wheel  ──┘
 ```
 
-The tests run first and everything waits on them, so **a tag cannot produce
-a release while the suite is red**. Each build then checks its own archive
-before uploading: that the file exists, that it unpacks, that the executable
-is inside it, and that Qt WebEngine has not crept back in — the fault
-described above, which doubles the download for a browser that cannot start.
+**The builds do not re-run the suite.** Tests already runs it on every push
+across both platforms and two Python versions; repeating it in the build
+workflow would double every push's CI for no extra signal — and did, until
+these were split.
+
+A tag still must not publish broken code, so the release job checks that
+Tests *concluded successfully for the commit being tagged* before attaching
+anything. It reads the result rather than recomputing it.
+
+**This is why you push the commit before tagging it.** Tag a commit that
+master has never seen and there is no Tests result to find, so the release
+job stops with "Tests did not pass (got: missing)". Nothing is published;
+push the branch, let Tests finish, then push the tag.
+
+Each build checks its own archive before uploading: that the file exists,
+that it unpacks, that the executable is inside, and that Qt WebEngine has
+not crept back in — the fault described above, which doubles the download
+for a browser that cannot start.
 
 The wheel is checked with `twine check`, because broken metadata installs
 fine locally and fails on PyPI.
@@ -398,7 +413,8 @@ comes from the SVG at runtime; this is only the file icon in Explorer.
 1. Update `CHANGELOG.md` — move the Unreleased entries under the new version.
 2. Bump the version in `pyproject.toml` and `src/vcut/__init__.py`.
 3. Run the tests: `uv run pytest`.
-4. Commit.
+4. Commit, and **push to master**. Wait for Tests to go green — the release
+   job looks for that result and refuses to publish without it.
 5. Tag and push:
 
    ```sh

@@ -176,14 +176,39 @@ def _release_workflow() -> dict:
 
 
 def test_a_tag_cannot_release_without_passing_tests():
-    # Without this gate a red suite still produces a release, and the first
-    # anyone knows of it is a broken download.
-    jobs = _release_workflow()["jobs"]
-    assert "test" in jobs
-    for name in ("linux", "windows", "wheel"):
-        needs = jobs[name].get("needs")
-        needs = [needs] if isinstance(needs, str) else (needs or [])
-        assert "test" in needs, f"{name} does not wait for the tests"
+    """Without a gate a red suite still produces a release, and the first
+    anyone knows of it is a broken download.
+
+    The suite is not re-run in this workflow -- Tests already covers every
+    push on a wider matrix, and repeating it would double each push's CI
+    for no extra signal. Instead the release job checks that Tests
+    concluded successfully for the commit being tagged.
+    """
+    release = _release_workflow()["jobs"]["release"]
+    steps = " ".join(str(step) for step in release["steps"])
+    assert "gh run list" in steps and "--workflow Tests" in steps, (
+        "the release job does not check the Tests result"
+    )
+    assert "conclusion" in steps
+
+
+def test_the_tests_workflow_covers_every_push():
+    # The release gate above is only meaningful if Tests actually runs.
+    import yaml
+
+    tests = yaml.safe_load(read(".github/workflows/tests.yml"))
+    triggers = tests.get("on", tests.get(True))
+    assert "push" in triggers and "pull_request" in triggers
+    matrix = tests["jobs"]["test"]["strategy"]["matrix"]
+    assert any("windows" in os for os in matrix["os"])
+    assert any("ubuntu" in os for os in matrix["os"])
+
+
+def test_the_workflows_do_not_both_run_the_suite():
+    # Two workflows running pytest on every push doubles CI for no signal,
+    # and produced two runs per push until this was split.
+    release = read(".github/workflows/release.yml")
+    assert "pytest" not in release, "the release workflow re-runs the tests"
 
 
 def test_the_release_waits_for_every_package():

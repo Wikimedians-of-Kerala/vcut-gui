@@ -1,11 +1,12 @@
 name: Build release packages
 
-# Builds the Linux and Windows packages, and the wheel, whenever a version
-# tag is pushed, then attaches them to the release.
+# Builds the Linux and Windows packages, and the wheel.
 #
-# Can also be run by hand from the Actions tab to check that packaging still
-# works, which is worth doing after any change to dependencies or to the
-# PyInstaller spec — cheaper than finding the breakage at release time.
+# The tests are NOT repeated here — Tests (tests.yml) already runs them on
+# every push and pull request, across both platforms and two Python
+# versions. Running them again would double every push's CI for no extra
+# signal. A tag is the one case worth gating, so the release job checks
+# that the suite passed for that commit before publishing anything.
 #
 # Windows runners are why this is on GitHub: PyInstaller cannot
 # cross-compile, and GitHub gives public repositories free Windows runners.
@@ -13,9 +14,8 @@ name: Build release packages
 on:
   push:
     tags: ["v*"]
-    # Also on pushes that touch packaging itself. A broken spec or build
-    # script otherwise stays hidden until a tag, which is the worst moment
-    # to find it. Ordinary commits do not trigger a build.
+    # Packaging changes also build, since a broken spec otherwise stays
+    # hidden until a tag. Ordinary commits do not.
     branches: [master]
     paths:
       - "packaging/**"
@@ -35,34 +35,18 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # A newer push supersedes an in-flight build of the same ref, except for
+  # tags, which must always finish.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 env:
   # The interpreter the packages are built against. The bundle embeds it.
   VCUT_PYTHON: "3.12"
 
 jobs:
-  # A tag should not produce a release if the suite is red. This runs first
-  # and everything else waits on it.
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v10.2.0
-        with:
-          enable-cache: true
-      - name: Install the Qt runtime libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libegl1 libgl1 libxkbcommon-x11-0 \
-            libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0
-      - run: uv python install ${{ env.VCUT_PYTHON }}
-      - run: uv sync --extra dev
-      - name: Run the tests
-        run: uv run pytest -q
-        env:
-          QT_QPA_PLATFORM: offscreen
-
   linux:
-    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -98,7 +82,6 @@ jobs:
           if-no-files-found: error
 
   windows:
-    needs: test
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -138,7 +121,6 @@ jobs:
           if-no-files-found: error
 
   wheel:
-    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -162,6 +144,23 @@ jobs:
     permissions:
       contents: write
     steps:
+      # The suite is not re-run here -- Tests already ran it for this commit
+      # -- but a tag must not publish if it was red, so check the result
+      # before anything is attached to a release.
+      - uses: actions/checkout@v5
+      - name: Require the tests to have passed for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha="${{ github.sha }}"
+          echo "Checking Tests for $sha"
+          conclusion=$(gh run list --workflow Tests --commit "$sha"             --limit 1 --json conclusion --jq '.[0].conclusion // "missing"')
+          echo "Tests concluded: $conclusion"
+          if [ "$conclusion" != "success" ]; then
+            echo "::error::Tests did not pass for $sha (got: $conclusion)."
+            echo "Push the commit to master first and let Tests finish."
+            exit 1
+          fi
       - uses: actions/download-artifact@v6
         with:
           path: artifacts

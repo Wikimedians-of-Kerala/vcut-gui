@@ -5,6 +5,13 @@ on:
     branches: [master]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     strategy:
@@ -25,6 +32,8 @@ jobs:
       - run: uv python install ${{ matrix.python }}
       - run: uv sync --extra dev
       - name: Run the tests
-        run: uv run pytest -q
+        # -rA and the traceback make a CI failure diagnosable from the log
+        # alone; with -q a red run says only "exit code 1".
+        run: uv run pytest -rA --tb=short --durations=10
         env:
           QT_QPA_PLATFORM: offscreen
