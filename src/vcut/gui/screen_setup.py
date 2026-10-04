@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..csvio import read_clips
-from ..ffmpeg import CutMode, OutputFormat, resolve_av1_encoder
+from ..ffmpeg import AudioLayout, CutMode, OutputFormat, resolve_av1_encoder
 
 
 def _as_format(value) -> OutputFormat | None:
@@ -218,6 +218,18 @@ class SetupScreen(QWidget):
         self.audio_field.setPlaceholderText("128k")
         form.addRow("Audio bitrate", self.audio_field)
 
+        self.audio_layout_box = QComboBox()
+        for layout in AudioLayout:
+            self.audio_layout_box.addItem(layout.label, layout)
+        self.audio_layout_hint = StatusLabel(
+            "Conference recordings are often mono, which players put in one "
+            "ear. Duplicating it to both channels fixes that."
+        )
+        form.addRow(
+            "Audio channels",
+            with_note(self.audio_layout_box, self.audio_layout_hint),
+        )
+
         pads = QHBoxLayout()
         pads.setContentsMargins(0, 0, 0, 0)
         self.pad_start_spin = QSpinBox()
@@ -277,6 +289,14 @@ class SetupScreen(QWidget):
         self.overwrite_box.setChecked(settings.encoding.overwrite)
         self.dry_run_box.setChecked(settings.dry_run)
 
+    def reload_encoding(self) -> None:
+        """Re-read the encoding settings after the FFmpeg window changed them."""
+        encoding = self.state.settings.encoding
+        self.quality_spin.setValue(encoding.crf)
+        self.audio_field.setText(encoding.audio_bitrate)
+        self.overwrite_box.setChecked(encoding.overwrite)
+        self._check_encoders()
+
     def restyle(self) -> None:
         """Rebuild button icons after a theme change."""
         icons.restyle_widget(self)
@@ -307,6 +327,8 @@ class SetupScreen(QWidget):
 
         self.quality_spin.setValue(encoding.crf)
         self.audio_field.setText(encoding.audio_bitrate)
+        index = self.audio_layout_box.findData(encoding.audio_layout)
+        self.audio_layout_box.setCurrentIndex(max(0, index))
         self.pad_start_spin.setValue(int(encoding.pad_start))
         self.pad_end_spin.setValue(int(encoding.pad_end))
         self.extra_field.setText(" ".join(encoding.extra_args))
@@ -342,6 +364,13 @@ class SetupScreen(QWidget):
             encoding.cut_mode = mode
         encoding.crf = self.quality_spin.value()
         encoding.audio_bitrate = self.audio_field.text().strip() or "128k"
+        layout_choice = self.audio_layout_box.currentData()
+        if not isinstance(layout_choice, AudioLayout):
+            try:
+                layout_choice = AudioLayout(layout_choice)
+            except (ValueError, TypeError):
+                layout_choice = AudioLayout.KEEP
+        encoding.audio_layout = layout_choice
         encoding.pad_start = float(self.pad_start_spin.value())
         encoding.pad_end = float(self.pad_end_spin.value())
         encoding.overwrite = self.overwrite_box.isChecked()

@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- Signing in to Wikimedia Commons from the app, with no terminal. A bot
+  password is stored in the computer's keychain and the Pywikibot
+  configuration written for you.
+- Accounts with a passkey or two-factor sign-in can use the wiki's own login
+  page in an embedded browser. A passkey is bound to the browser origin and
+  cannot be typed into an app, so Commons answers it and the app takes the
+  session afterwards — which it can then upload with directly.
+- Hardware-accelerated encoding, detected by running each encoder rather
+  than trusting what FFmpeg lists. The window says plainly what your GPU can
+  do: most cannot encode AV1 or VP9, so they speed up MP4 review cuts while
+  the Commons conversion stays on the processor.
+- An FFmpeg settings window for the program paths, hardware acceleration,
+  threading and raw arguments.
+- Mono audio can be duplicated to both channels. Conference recordings are
+  often a single mic feed, which players put in one ear.
+
 ## 1.0.2 — 2026-10-03
 
 - The timeline zooms, with buttons, Ctrl+wheel, and *Zoom to clip*. At 1x a

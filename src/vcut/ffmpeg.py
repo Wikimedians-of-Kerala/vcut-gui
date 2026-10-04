@@ -44,6 +44,27 @@ class CutMode(str, Enum):
 SMART_PREROLL_SECONDS = 20.0
 
 
+class AudioLayout(str, Enum):
+    """What to do with the source's audio channels.
+
+    Conference recordings often arrive mono, from a single mic feed. Players
+    then put the sound in one ear, or in one speaker, which sounds broken
+    even though the file is fine.
+    """
+
+    KEEP = "keep"
+    STEREO = "stereo"        # duplicate mono to both channels
+    FORCE_MONO = "mono"      # downmix to one channel
+
+    @property
+    def label(self) -> str:
+        return {
+            AudioLayout.KEEP: "Keep the source layout",
+            AudioLayout.STEREO: "Make mono sound stereo (duplicate to both)",
+            AudioLayout.FORCE_MONO: "Downmix everything to mono",
+        }[self]
+
+
 class OutputFormat(str, Enum):
     """Container/codec target for the produced clips.
 
@@ -175,6 +196,7 @@ class EncodingSettings:
     preset: str = "medium"
     audio_codec: str = "aac"
     audio_bitrate: str = "192k"
+    audio_layout: AudioLayout = AudioLayout.KEEP
     scale: str = ""          # e.g. "1280:-2"; empty means keep source size
     fps: str = ""            # e.g. "30"; empty means keep source rate
     threads: int = 0         # 0 lets ffmpeg decide
@@ -183,6 +205,14 @@ class EncodingSettings:
     vp9_two_pass: bool = False
     # SVT-AV1 only: 0 is slowest/best quality, 13 is fastest. 8 is a good balance.
     av1_preset: int = 8
+    #: Use a GPU encoder when one exists for the chosen codec. Falls back to
+    #: the CPU silently when it does not — most GPUs cannot encode AV1 or VP9.
+    use_hardware: bool = False
+    #: Chosen hardware encoder, e.g. "h264_vaapi"; empty means pick the best.
+    hardware_encoder: str = ""
+    hardware_device: str = ""
+    #: Quality for hardware encoders, which use a quantiser rather than CRF.
+    hardware_quality: int = 23
     pad_start: float = 0.0   # seconds of lead-in added to every clip
     pad_end: float = 0.0     # seconds of lead-out added to every clip
     extra_args: list[str] = field(default_factory=list)
@@ -192,6 +222,7 @@ class EncodingSettings:
         data = {k: v for k, v in self.__dict__.items()}
         data["cut_mode"] = self.cut_mode.value
         data["output_format"] = self.output_format.value
+        data["audio_layout"] = self.audio_layout.value
         return data
 
     @classmethod
@@ -201,6 +232,11 @@ class EncodingSettings:
             known["cut_mode"] = CutMode(known["cut_mode"])
         if "output_format" in known:
             known["output_format"] = OutputFormat(known["output_format"])
+        if "audio_layout" in known:
+            try:
+                known["audio_layout"] = AudioLayout(known["audio_layout"])
+            except ValueError:
+                known["audio_layout"] = AudioLayout.KEEP
         return cls(**known)
 
     @property
@@ -353,6 +389,8 @@ def build_command(
 
     command = [exe, "-hide_banner", "-nostdin"]
     command.append("-y" if settings.overwrite else "-n")
+    # Device selection has to precede -i, so it goes on before the seek.
+    command += _hardware_input_args(settings)
 
     cut_mode = settings.cut_mode
     if cut_mode is CutMode.COPY and settings.output_format is not OutputFormat.MP4:
@@ -387,8 +425,71 @@ def build_command(
     return command
 
 
+def audio_filter(settings: EncodingSettings, *, source_channels: int = 0) -> str:
+    """The ``-af`` value for the chosen channel layout, or an empty string.
+
+    ``source_channels`` lets the stereo option leave genuinely stereo audio
+    alone; without it the filter is applied regardless, which is harmless
+    but wasteful.
+    """
+    if settings.audio_layout is AudioLayout.STEREO:
+        if source_channels and source_channels >= 2:
+            return ""
+        # Copy the single channel to both, rather than relying on ffmpeg's
+        # default upmix, so the result is centred rather than one-sided.
+        return "pan=stereo|c0=c0|c1=c0"
+    if settings.audio_layout is AudioLayout.FORCE_MONO:
+        return "pan=mono|c0=0.5*c0+0.5*c1"
+    return ""
+
+
+def _audio_args(settings: EncodingSettings, source_channels: int = 0) -> list[str]:
+    """Audio codec flags, including any channel-layout filter."""
+    args: list[str] = []
+    filter_text = audio_filter(settings, source_channels=source_channels)
+    if filter_text:
+        args += ["-af", filter_text]
+    args += ["-c:a", settings.audio_codec]
+    if settings.audio_codec not in ("copy",):
+        args += ["-b:a", settings.audio_bitrate]
+    return args
+
+
+def _hardware_input_args(settings: EncodingSettings) -> list[str]:
+    """Flags that must precede ``-i`` when encoding on the GPU."""
+    encoder = _hardware_encoder(settings)
+    if encoder and encoder.endswith("_vaapi"):
+        device = settings.hardware_device or _default_render_node()
+        if device:
+            return ["-vaapi_device", device]
+    return []
+
+
+def _default_render_node() -> str:
+    import os
+    import sys
+
+    if sys.platform != "linux":
+        return ""
+    for node in ("/dev/dri/renderD128", "/dev/dri/renderD129"):
+        if os.path.exists(node):
+            return node
+    return ""
+
+
+def _hardware_encoder(settings: EncodingSettings) -> str:
+    """The GPU encoder to use, or empty when encoding on the CPU."""
+    if not settings.use_hardware or settings.video_codec == "copy":
+        return ""
+    return settings.hardware_encoder
+
+
 def _encode_args(settings: EncodingSettings) -> list[str]:
     """Video/audio encoder flags for the configured container."""
+    hardware = _hardware_encoder(settings)
+    if hardware:
+        return _hardware_encode_args(settings, hardware)
+
     args = ["-c:v", settings.video_codec]
 
     if settings.video_codec not in ("copy",):
@@ -416,11 +517,48 @@ def _encode_args(settings: EncodingSettings) -> list[str]:
     if filters:
         args += ["-vf", ",".join(filters)]
 
-    args += ["-c:a", settings.audio_codec]
-    if settings.audio_codec not in ("copy",):
-        args += ["-b:a", settings.audio_bitrate]
+    args += _audio_args(settings)
 
     # Keep the moov atom at the front so MP4 clips scrub without a full download.
+    if settings.output_format is OutputFormat.MP4:
+        args += ["-movflags", "+faststart"]
+    return args
+
+
+def _hardware_encode_args(settings: EncodingSettings, encoder: str) -> list[str]:
+    """Encoder flags for a GPU encoder.
+
+    Hardware encoders take a quantiser rather than a CRF, and VAAPI needs
+    the frames uploaded to the GPU first.
+    """
+    args: list[str] = []
+    filters = []
+    if encoder.endswith("_vaapi"):
+        # Everything must be in a format the GPU accepts before upload.
+        filters.append("format=nv12")
+    if settings.scale:
+        filters.append(f"scale={settings.scale}")
+    if settings.fps:
+        filters.append(f"fps={settings.fps}")
+    if encoder.endswith("_vaapi"):
+        filters.append("hwupload")
+    if filters:
+        args += ["-vf", ",".join(filters)]
+
+    args += ["-c:v", encoder]
+    quality = str(settings.hardware_quality)
+    if encoder.endswith("_vaapi"):
+        args += ["-qp", quality]
+    elif encoder.endswith("_nvenc"):
+        args += ["-rc", "constqp", "-qp", quality, "-preset", "p4"]
+    elif encoder.endswith("_qsv"):
+        args += ["-global_quality", quality]
+    elif encoder.endswith("_amf"):
+        args += ["-rc", "cqp", "-qp_i", quality, "-qp_p", quality]
+    elif encoder.endswith("_videotoolbox"):
+        args += ["-q:v", quality]
+
+    args += _audio_args(settings)
     if settings.output_format is OutputFormat.MP4:
         args += ["-movflags", "+faststart"]
     return args
@@ -521,6 +659,7 @@ def build_convert_command(
     exe = find_executable("ffmpeg", ffmpeg_path)
     command = [exe, "-hide_banner", "-nostdin"]
     command.append("-y" if settings.overwrite else "-n")
+    command += _hardware_input_args(settings)
     command += ["-i", str(source)]
 
     if pass_number in (1, 2):

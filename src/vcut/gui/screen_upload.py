@@ -55,10 +55,18 @@ class UploadScreen(QWidget):
         login_row = QHBoxLayout()
         self.login_status = StatusLabel("Checking Pywikibot…")
         login_row.addWidget(self.login_status, 1)
-        check = QPushButton("Check login")
+        sign_in = QPushButton("Sign in to Commons")
+        sign_in.setAutoDefault(False)
+        icons.apply(sign_in, "login")
+        sign_in.setProperty("iconRole", "login")
+        sign_in.setToolTip("Sign in with a bot password, without a terminal")
+        sign_in.clicked.connect(self._open_login)
+        login_row.addWidget(sign_in)
+
+        check = QPushButton("Check")
         check.setAutoDefault(False)
-        icons.apply(check, "login")
-        check.setProperty("iconRole", "login")
+        icons.apply(check, "refresh")
+        check.setProperty("iconRole", "refresh")
         check.clicked.connect(self.check_login)
         login_row.addWidget(check)
         layout.addLayout(login_row)
@@ -149,6 +157,14 @@ class UploadScreen(QWidget):
         return self._actions
 
     # -- login -------------------------------------------------------------
+
+    def _open_login(self) -> None:
+        from .login_dialog import LoginDialog
+
+        dialog = LoginDialog(self)
+        dialog.logged_in.connect(lambda _user: self.check_login())
+        dialog.exec()
+        self.check_login()
 
     def check_login(self) -> None:
         status = check_login()

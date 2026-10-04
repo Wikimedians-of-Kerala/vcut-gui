@@ -41,6 +41,33 @@ cuts are converted into an uploadable format.
 metadata into the folder and finish later. Clips already on Commons are
 marked with their address and are not offered again.
 
+## Signing in to Commons
+
+`File > Sign in to Commons` handles the login, so no terminal is needed.
+
+A **bot password** is the usual choice: create one at
+[Special:BotPasswords](https://commons.wikimedia.org/wiki/Special:BotPasswords),
+paste the two values, and the app stores the secret in your computer's
+keychain and writes the Pywikibot configuration itself. It is revocable and
+separate from your account password.
+
+If your account uses a **passkey or two-factor sign-in**, use the browser
+tab instead. A passkey is bound to the browser origin — `commons.wikimedia.org`
+— and cannot be typed into an app, so the wiki's own login page is shown and
+the app picks up the session afterwards. That session can upload directly.
+Sessions expire, so a bot password is still better for work spread over
+several days.
+
+## Hardware acceleration
+
+`File > FFmpeg settings > Hardware` detects what your GPU can encode by
+running each encoder once, rather than trusting the list FFmpeg prints.
+
+Be aware of what this can and cannot do. Commons accepts AV1, VP9 and
+Theora, and hardware AV1 or VP9 encoders are still uncommon — on most
+machines the GPU will speed up MP4 review cuts while the conversion for
+Commons stays on the processor. The window says which case you are in.
+
 ## Projects
 
 `File > Save project` writes the whole job — the video, every clip and its

@@ -214,6 +214,14 @@ class MainWindow(QMainWindow):
 
         file_menu.addSeparator()
 
+        login_action = QAction("Sign in to &Commons…", self)
+        login_action.triggered.connect(self._show_login)
+        file_menu.addAction(login_action)
+
+        ffmpeg_action = QAction("&FFmpeg settings…", self)
+        ffmpeg_action.triggered.connect(self._show_ffmpeg_settings)
+        file_menu.addAction(ffmpeg_action)
+
         save_action = QAction("Save se&ttings", self)
         save_action.triggered.connect(self._save_settings)
         file_menu.addAction(save_action)
@@ -370,6 +378,20 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(
             f"{name} — vcut" if name else "vcut — conference video cutter"
         )
+
+    def _show_login(self) -> None:
+        from .login_dialog import LoginDialog
+
+        dialog = LoginDialog(self)
+        dialog.logged_in.connect(lambda _u: self.upload_screen.check_login())
+        dialog.exec()
+
+    def _show_ffmpeg_settings(self) -> None:
+        from .ffmpeg_dialog import FFmpegDialog
+
+        dialog = FFmpegDialog(self.state.settings, self)
+        dialog.settings_changed.connect(self.setup_screen.reload_encoding)
+        dialog.exec()
 
     def _show_media_info(self) -> None:
         from .media_info_dialog import MediaInfoDialog

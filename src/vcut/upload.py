@@ -36,8 +36,24 @@ class LoginStatus:
     message: str = ""
 
 
+def _use_generated_config() -> None:
+    """Point Pywikibot at the configuration the login window wrote.
+
+    Without this it looks in the current directory, which is wherever the
+    app happened to be started from.
+    """
+    import os
+
+    from .auth import pywikibot_directory
+
+    directory = pywikibot_directory()
+    if (directory / "user-config.py").is_file():
+        os.environ.setdefault("PYWIKIBOT_DIR", str(directory))
+
+
 def pywikibot_available() -> bool:
     try:
+        _use_generated_config()
         import pywikibot  # noqa: F401
     except ImportError:
         return False
@@ -54,19 +70,23 @@ def check_login(family: str = "commons", code: str = "commons") -> LoginStatus:
             )
         )
 
+    from .auth import load as load_credentials
+
+    stored = load_credentials()
+
     import pywikibot
 
     try:
         site = pywikibot.Site(code, family)
         user = site.username()
         if not user:
-            return LoginStatus(
-                available=True, site=str(site),
-                message=(
-                    "Pywikibot is installed but not logged in. Run "
-                    "'pywikibot login' in a terminal, then try again."
-                ),
+            hint = (
+                "Not signed in to Commons yet — use Sign in to Commons."
+                if stored is None else
+                f"Stored credentials for {stored.account} were not accepted; "
+                f"sign in again."
             )
+            return LoginStatus(available=True, site=str(site), message=hint)
         return LoginStatus(
             available=True, logged_in=True, username=str(user), site=str(site),
             message=f"Logged in to {site} as {user}.",
@@ -129,6 +149,12 @@ def upload_file(
     if dry_run:
         return f"would upload as {prepared.filename}"
 
+    # A browser session is preferred when there is one: it is how an account
+    # with a passkey or two-factor sign-in gets here at all.
+    session_result = _try_browser_session(prepared, comment)
+    if session_result is not None:
+        return session_result
+
     if not pywikibot_available():
         raise UploadError(
             "Pywikibot is not installed. Install it with 'uv pip install pywikibot'."
@@ -165,6 +191,32 @@ def upload_file(
         raise UploadError(f"upload failed: {exc}") from exc
 
     return f"uploaded as {prepared.filename}"
+
+
+def _try_browser_session(prepared: CommonsFile, comment: str) -> str | None:
+    """Upload with captured browser cookies, or return ``None`` to fall back."""
+    try:
+        from .gui import browser_login
+    except ImportError:
+        return None
+
+    session = browser_login.load_session()
+    if session is None:
+        return None
+    if not browser_login.can_upload(session):
+        # Expired: say so rather than silently trying something else.
+        raise UploadError(
+            "the browser session has expired — sign in to Commons again"
+        )
+
+    try:
+        name = browser_login.upload_with_session(
+            session, prepared.local_path, prepared.filename,
+            prepared.wikitext, comment=comment,
+        )
+    except RuntimeError as exc:
+        raise UploadError(str(exc)) from exc
+    return f"uploaded as {name}"
 
 
 def commons_url(filename: str) -> str:
