@@ -203,11 +203,13 @@ def test_stream_copy_states_what_it_costs_on_this_file(qt_app):
         MediaInfo(duration=32540.0, width=1280, height=720, fps=30.0,
                   keyframe_interval=5.0),
     )
-    window.state.clips = [
+    window.state.clips[:] = [
         Clip(programme="One", start_time="00:10:59", end_time="00:33:34"),
         Clip(programme="Two", start_time="00:33:52", end_time="00:52:51"),
     ]
 
+    # Re-render after the clips land: set_source replaces the list.
+    screen.cut_box.setCurrentIndex(screen.cut_box.findData(CutMode.SMART))
     screen.cut_box.setCurrentIndex(screen.cut_box.findData(CutMode.COPY))
     text = screen.cut_hint.text()
 

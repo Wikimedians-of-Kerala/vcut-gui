@@ -22,7 +22,7 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 
-from .ffmpeg import FFmpegError, find_executable
+from .ffmpeg import FFmpegError, child_environment, find_executable
 
 
 class Backend(str, Enum):
@@ -177,7 +177,7 @@ def probe(ffmpeg_path: str = "", device: str = "", timeout: float = 20.0) -> Cap
             try:
                 result = subprocess.run(
                     _probe_command(encoder, caps.device, exe),
-                    capture_output=True, text=True, timeout=timeout, check=False,
+                    capture_output=True, env=child_environment(), text=True, timeout=timeout, check=False,
                 )
             except (OSError, subprocess.TimeoutExpired) as exc:
                 encoder.detail = str(exc)

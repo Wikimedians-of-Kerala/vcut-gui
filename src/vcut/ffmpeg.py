@@ -166,6 +166,7 @@ def available_encoders(ffmpeg_path: str = "") -> set[str]:
         result = subprocess.run(
             [exe, "-hide_banner", "-encoders"],
             capture_output=True, text=True, timeout=30, check=False,
+            env=child_environment(),
         )
     except (OSError, subprocess.TimeoutExpired):
         return set()
@@ -338,7 +339,8 @@ def probe(source: str | Path, ffprobe_path: str = "") -> MediaInfo:
     ]
     try:
         completed = subprocess.run(
-            command, capture_output=True, text=True, timeout=120, check=False
+            command, capture_output=True, text=True, timeout=120,
+            check=False, env=child_environment(),
         )
     except subprocess.TimeoutExpired as exc:
         raise FFmpegError(f"ffprobe timed out inspecting {source}") from exc
@@ -637,6 +639,7 @@ def run_command(
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
+            env=child_environment(),
             **_no_window_kwargs(),
         )
     except OSError as exc:
@@ -781,6 +784,41 @@ def _no_window_kwargs() -> dict:
     return {}
 
 
+#: Directories to keep out of a child ffmpeg's library search path.
+_QT_LIBRARY_MARKERS = ("PySide6", "PyQt5", "PyQt6", "/Qt/lib")
+
+
+def child_environment() -> dict[str, str]:
+    """The environment to run ffmpeg in, with Qt's own libraries removed.
+
+    Qt Multimedia ships its own copies of the FFmpeg libraries, and they are
+    usually a different major version from the ffmpeg on PATH -- here, Qt
+    carries libavcodec 61 while the system ffmpeg is built against 63. Once
+    the player has loaded, those directories can be on the search path, and a
+    child ffmpeg then resolves its libraries to Qt's. The ABI does not match,
+    so it segfaults: the user sees "ffmpeg exited with code -11" for a
+    command that works perfectly in a terminal.
+
+    Dropping those entries makes the child find the system libraries its
+    binary was linked against, which is what it would find if the GUI were
+    not running at all.
+    """
+    environment = dict(os.environ)
+    for name in ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH"):
+        value = environment.get(name)
+        if not value:
+            continue
+        kept = [
+            entry for entry in value.split(os.pathsep)
+            if entry and not any(mark in entry for mark in _QT_LIBRARY_MARKERS)
+        ]
+        if kept:
+            environment[name] = os.pathsep.join(kept)
+        else:
+            environment.pop(name, None)
+    return environment
+
+
 def iter_clip_jobs(clips: list[Clip]) -> Iterator[Clip]:
     """Yield the clips that are selected and free of validation errors."""
     for clip in clips:
@@ -908,7 +946,7 @@ def keyframe_interval(
     try:
         result = subprocess.run(
             command, capture_output=True, text=True, timeout=30,
-            **_no_window_kwargs(),
+            env=child_environment(), **_no_window_kwargs(),
         )
     except (OSError, subprocess.SubprocessError):
         return 0.0
