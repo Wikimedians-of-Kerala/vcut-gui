@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.0 — 2026-10-04
+
+- **The Commons name can be typed, separately from the file on disk.** The
+  name a file carries on Commons is often not the name it has locally: a
+  talk title the generator truncated, or wording the community has settled
+  on. The Commons name column is now editable, and the local file keeps its
+  own name. Clearing the cell goes back to the generated name, and a
+  hand-written one is shown in italics so it is visible which rows were
+  changed. The extension always follows the real file rather than whatever
+  was typed, since Commons refuses an upload whose name does not match the
+  file — and the extension changes under you when a clip is converted from
+  MP4 to WebM. The override is saved with the project.
+
 ## 1.2.0 — 2026-10-04
 
 Uploading.
