@@ -338,10 +338,29 @@ def pool() -> QThreadPool:
 _before_encoding: list = []
 
 
+#: Called once the last encoding job finishes, so the window can take its
+#: resources back.
+_after_encoding: list = []
+
+
 def before_encoding(callback) -> None:
     """Register something to run just before any encode starts."""
     if callback not in _before_encoding:
         _before_encoding.append(callback)
+
+
+def after_encoding(callback) -> None:
+    """Register something to run once the last encode finishes."""
+    if callback not in _after_encoding:
+        _after_encoding.append(callback)
+
+
+def _restore_resources() -> None:
+    for callback in list(_after_encoding):
+        try:
+            callback()
+        except Exception:  # noqa: BLE001 - never fail a finished job
+            pass
 
 
 def _release_resources() -> None:
@@ -427,6 +446,10 @@ def encoding_slot(
     finally:
         with _encoding_guard:
             _encoding_running -= 1
+            idle = _encoding_running == 0
+        # Only once nothing is encoding: another job may still want the room.
+        if idle:
+            _restore_resources()
 
 
 #: Workers handed to the thread pool are owned and deleted by it once they

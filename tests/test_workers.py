@@ -178,3 +178,36 @@ def test_releasing_clears_the_source_not_merely_stops():
 
     source = inspect.getsource(VerifyScreen.release_player)
     assert "setSource" in source, "the file is never let go"
+
+
+def test_the_player_comes_back_when_encoding_ends():
+    """Releasing is only half of it; the pane must not stay grey."""
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    from vcut.ffmpeg import MediaInfo
+    from vcut.gui import workers
+    from vcut.gui.main_window import MainWindow
+
+    window = MainWindow()
+    screen = window.verify_screen
+    window.state.set_source("day1.mp4", MediaInfo(duration=600.0))
+
+    with workers.encoding_slot("libx264", width=640, height=360):
+        app.processEvents()
+        assert screen.video_stack.currentWidget() is screen.video_placeholder
+
+    app.processEvents()
+    assert screen.video_stack.currentWidget() is screen.video
+
+
+def test_the_hooks_cross_threads_safely():
+    # Qt widgets may only be touched from the GUI thread, so the worker
+    # emits a queued signal rather than calling the screen directly.
+    import inspect
+
+    from vcut.gui.screen_verify import VerifyScreen
+
+    source = inspect.getsource(VerifyScreen)
+    assert "_release_requested" in source
+    assert "QueuedConnection" in source

@@ -45,6 +45,12 @@ class VerifyScreen(QWidget):
 
     finished_cutting = Signal()
 
+    #: Emitted from a worker thread when the player must let go of its file,
+    #: and again when it may take it back. Queued, so the work happens on the
+    #: GUI thread where Qt requires it.
+    _release_requested = Signal()
+    _restore_requested = Signal()
+
     def __init__(self, state: AppState, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.state = state
@@ -126,7 +132,16 @@ class VerifyScreen(QWidget):
         # Holding a long recording open through it while a child ffmpeg
         # encodes has been implicated in crashes that do not occur with the
         # player idle, so let go of the file before any encode starts.
-        workers.before_encoding(self.release_player)
+        # Both run from a worker thread, and Qt widgets may only be touched
+        # from the GUI thread. A queued signal hops back across.
+        workers.before_encoding(self._release_requested.emit)
+        workers.after_encoding(self._restore_requested.emit)
+        self._release_requested.connect(
+            self.release_player, Qt.QueuedConnection
+        )
+        self._restore_requested.connect(
+            self.restore_player, Qt.QueuedConnection
+        )
 
         layout.addWidget(self.video_stack, 1)
         return panel
