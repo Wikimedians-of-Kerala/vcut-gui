@@ -25,6 +25,39 @@ if (-not (Test-Path dist\vcut-gui\vcut-gui.exe)) {
     throw "PyInstaller did not produce dist\vcut-gui\vcut-gui.exe"
 }
 
+Write-Host "==> Fetching libmpv"
+# Qt's bundled FFmpeg has no AV1 decoder, so without libmpv an AV1 recording
+# shows as a black rectangle on the screen whose whole job is finding cut
+# points by eye. There is no Windows package to depend on, so the DLL is
+# shipped in the bundle; python-mpv finds it on PATH, which the program adds
+# at startup. Linux installs libmpv2 from the distribution instead.
+$mpvDll = "dist\vcut-gui\libmpv-2.dll"
+if (-not (Test-Path $mpvDll)) {
+    $headers = @{ "User-Agent" = "vcut-gui-build" }
+    if ($env:GITHUB_TOKEN) { $headers["Authorization"] = "Bearer $env:GITHUB_TOKEN" }
+    $release = Invoke-RestMethod -Headers $headers `
+        -Uri "https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest"
+    # The "dev" archive is the one with the DLL and its import library; the
+    # plain one is the player. "v3" is built for newer CPUs only.
+    $asset = $release.assets |
+        Where-Object { $_.name -like "mpv-dev-x86_64-2*" -and $_.name -notlike "*v3*" } |
+        Select-Object -First 1
+    if (-not $asset) { throw "no mpv-dev-x86_64 archive in the latest release" }
+
+    Write-Host "    $($asset.name)"
+    $archive = Join-Path $env:TEMP $asset.name
+    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $archive
+    $extracted = Join-Path $env:TEMP "mpv-dev"
+    if (Test-Path $extracted) { Remove-Item -Recurse -Force $extracted }
+    # 7-Zip is present on the GitHub Windows runners.
+    & 7z x -y "-o$extracted" $archive | Out-Null
+    $dll = Get-ChildItem -Path $extracted -Filter "libmpv-2.dll" -Recurse |
+        Select-Object -First 1
+    if (-not $dll) { throw "libmpv-2.dll not found in $($asset.name)" }
+    Copy-Item $dll.FullName $mpvDll
+}
+if (-not (Test-Path $mpvDll)) { throw "libmpv-2.dll was not bundled" }
+
 Write-Host "==> Checking the bundle starts"
 # Catches entry-point and missing-import faults, which only appear once the
 # app runs outside a Python environment.

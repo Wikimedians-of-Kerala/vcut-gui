@@ -27,6 +27,13 @@ a = Analysis(
         "vcut.gui.screen_verify",
         "vcut.gui.screen_metadata",
         "vcut.gui.screen_upload",
+        # Video is drawn with libmpv's render API into a QOpenGLWidget, which
+        # lives in its own Qt module, and PyOpenGL picks its platform backend
+        # at runtime -- neither is reachable by following imports.
+        "PySide6.QtOpenGLWidgets",
+        "OpenGL.platform.glx",
+        "OpenGL.platform.egl",
+        "OpenGL.platform.win32",
     ],
     hookspath=[],
     runtime_hooks=[],

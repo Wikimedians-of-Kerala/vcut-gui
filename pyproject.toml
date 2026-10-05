@@ -36,6 +36,11 @@ dependencies = [
     # libmpv uses the system FFmpeg, which does. The binding is pure Python;
     # libmpv itself is a system library, like ffmpeg.
     "python-mpv>=1.0",
+    # libmpv draws video through the GL context of the widget it is given,
+    # which is what keeps the picture inside the window on Wayland. PyOpenGL
+    # supplies the one function that handshake needs: the address of a GL
+    # symbol. Pure Python, and only used while a video is on screen.
+    "PyOpenGL>=3.1",
 ]
 
 [project.urls]

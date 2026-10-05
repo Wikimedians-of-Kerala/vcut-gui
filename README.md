@@ -125,6 +125,10 @@ forced under **View → Theme**.
 - Python 3.11+
 - [FFmpeg](https://ffmpeg.org/) on your `PATH`, built with `libsvtav1` (or
   `libvpx-vp9`) and `libopus` for Commons-ready output
+- libmpv, to show the video while you pick cut points. Qt's own player has
+  no AV1 decoder, so without it an AV1 recording appears as a black
+  rectangle. On Debian or Ubuntu: `sudo apt install libmpv2`. The packaged
+  Windows build carries its own copy.
 - [Pywikibot](https://www.mediawiki.org/wiki/Manual:Pywikibot), only if you
   want to upload from the app
 

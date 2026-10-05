@@ -114,46 +114,120 @@ def test_the_numeric_locale_is_forced_to_c():
     assert "LC_ALL" not in source
 
 
-def test_wayland_sessions_are_moved_to_xwayland():
-    """libmpv embeds by native window id, which is an X11 mechanism.
+def test_video_is_embedded_without_xwayland():
+    """The render API draws inside the window on Wayland as well as X11.
 
-    On Wayland there is no id to hand over, so mpv opens a window of its
-    own and the video appears outside the application.
+    Handing libmpv a native window id ("wid") is an X11 mechanism with no
+    Wayland equivalent, so it only worked by forcing the whole program
+    through XWayland. Rendering through the widget's own GL context needs
+    no such thing, and must not come back.
     """
     import inspect
-    import os
 
-    from vcut.gui.app import _embed_video_under_x11, main
+    from vcut.gui import app as app_module
 
-    source = inspect.getsource(_embed_video_under_x11)
-    assert "xcb" in source
-    assert "WAYLAND_DISPLAY" in source
-    # A platform the user chose must not be overridden.
-    assert "QT_QPA_PLATFORM" in source
+    assert not hasattr(app_module, "_embed_video_under_x11")
+    assert "xcb" not in inspect.getsource(app_module)
 
-    # And it has to run before QApplication reads the platform.
-    body = inspect.getsource(main)
-    assert body.index("_embed_video_under_x11()") < body.index("QApplication(argv)")
+    player_source = inspect.getsource(mpv_player)
+    assert '"wid"' not in player_source
+    assert 'options["vo"] = "libmpv"' in player_source
 
 
-def test_a_chosen_platform_is_respected(monkeypatch):
-    import os
+def test_the_surface_renders_through_its_own_gl_context():
+    """mpv draws into the widget's framebuffer, not a window of its own."""
+    import inspect
 
-    from vcut.gui.app import _embed_video_under_x11
+    source = inspect.getsource(mpv_player.MpvSurface)
+    assert "MpvRenderContext" in source
+    assert "opengl_fbo" in source
+    assert "defaultFramebufferObject" in source
+    # Qt6's framebuffer has no depth buffer, and PyOpenGL resolves its own
+    # context separately from Qt's, so clearing through it fails with
+    # "invalid enumerant". The comment saying so may stay; the call may not.
+    code = "\n".join(
+        line for line in source.splitlines() if not line.strip().startswith("#")
+    )
+    assert "glClear" not in code
 
-    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
-    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
-    _embed_video_under_x11()
-    assert os.environ["QT_QPA_PLATFORM"] == "offscreen"
+
+def test_frames_are_requested_across_the_thread_boundary():
+    """mpv calls back from its render thread; Qt widgets are GUI-thread only."""
+    import inspect
+
+    source = inspect.getsource(mpv_player.MpvSurface)
+    assert "QueuedConnection" in source
+    assert "update_cb" in source
 
 
-def test_an_x11_session_is_left_alone(monkeypatch):
-    import os
+def test_the_render_context_waits_for_both_gl_and_mpv():
+    """Qt may create the GL context either side of the file being set."""
+    import inspect
 
-    from vcut.gui.app import _embed_video_under_x11
+    source = inspect.getsource(mpv_player.MpvSurface._build_context)
+    assert "self._mpv is None" in source
+    assert "isValid()" in source
+    # Built from whichever arrives last.
+    assert "_build_context" in inspect.getsource(mpv_player.MpvSurface.initializeGL)
+    assert "_build_context" in inspect.getsource(mpv_player.MpvSurface.paintGL)
+    assert "_build_context" in inspect.getsource(mpv_player.MpvSurface.attach)
 
-    monkeypatch.delenv("QT_QPA_PLATFORM", raising=False)
-    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
-    monkeypatch.setenv("DISPLAY", ":0")
-    _embed_video_under_x11()
-    assert "QT_QPA_PLATFORM" not in os.environ
+
+def test_the_render_context_goes_before_the_player():
+    """libmpv must not be left rendering into a freed context."""
+    import inspect
+
+    source = inspect.getsource(mpv_player.MpvPlayer.release)
+    assert source.index("detach()") < source.index("terminate()")
+
+
+
+
+def test_windows_bundles_libmpv():
+    """There is no Windows package to depend on, so the DLL must ship.
+
+    Without it the packaged build shows a black rectangle for AV1, which is
+    the format this program recommends -- its own output would not play.
+    """
+    from pathlib import Path
+
+    script = Path("packaging/build-windows.ps1").read_text()
+    assert "libmpv-2.dll" in script
+    # The build must fail rather than quietly ship a player that cannot
+    # decode anything.
+    assert "throw" in script.split("Fetching libmpv")[1].split("Checking")[0]
+
+
+def test_the_bundled_dll_can_be_found_at_runtime():
+    """python-mpv loads the DLL through the ordinary Windows search path.
+
+    A frozen bundle's own directory is not on it, so the program has to put
+    it there before the import, or the shipped DLL is never found.
+    """
+    import inspect
+
+    source = inspect.getsource(mpv_player._add_bundled_library_to_path)
+    assert '"frozen"' in source
+    assert "PATH" in source
+    # Only Windows: elsewhere libmpv comes from the distribution.
+    assert 'sys.platform != "win32"' in source
+
+    # And it has to run before every attempt to import mpv.
+    for function in (
+        mpv_player.available,
+        mpv_player.unavailable_reason,
+        mpv_player.MpvPlayer._ensure,
+    ):
+        body = inspect.getsource(function)
+        assert "_add_bundled_library_to_path()" in body
+        assert body.index("_add_bundled_library_to_path()") < body.index("import mpv")
+
+
+def test_the_opengl_modules_are_packaged():
+    """PyInstaller cannot see either by following imports."""
+    from pathlib import Path
+
+    spec = Path("vcut-gui.spec").read_text()
+    assert "PySide6.QtOpenGLWidgets" in spec
+    # PyOpenGL picks its backend at runtime.
+    assert "OpenGL.platform" in spec

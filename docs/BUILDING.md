@@ -85,8 +85,14 @@ runtime libraries. On Debian or Ubuntu:
 
 ```sh
 sudo apt-get install -y libegl1 libgl1 libxkbcommon-x11-0 \
-  libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0
+  libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libmpv2
 ```
+
+`libmpv2` is what shows the video while cut points are chosen: Qt's bundled
+FFmpeg has no AV1 decoder, so without it an AV1 recording plays as a black
+rectangle. The video is drawn through the GL context of the widget it sits
+in, so it stays inside the window on Wayland as well as X11 — no XWayland,
+and no separate player window.
 
 These are what the CI workflow installs. On a normal desktop they are already
 there.

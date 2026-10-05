@@ -116,13 +116,10 @@ class VerifyScreen(QWidget):
         self.video_placeholder.setMinimumSize(320, 180)
         self.video_placeholder.setWordWrap(True)
 
-        # libmpv renders into a native window of its own, so it needs a
-        # plain widget rather than a QVideoWidget.
-        self.mpv_surface = QWidget()
+        # libmpv draws through this widget's own GL context, so the video
+        # stays inside the window on Wayland as well as X11 and Windows.
+        self.mpv_surface = mpv_player.MpvSurface()
         self.mpv_surface.setMinimumSize(320, 180)
-        self.mpv_surface.setStyleSheet("background: #000;")
-        self.mpv_surface.setAttribute(Qt.WA_NativeWindow, True)
-        self.mpv_surface.setAttribute(Qt.WA_DontCreateNativeAncestors, True)
 
         self.video_stack = QStackedWidget()
         self.video_stack.addWidget(self.video)
@@ -136,7 +133,7 @@ class VerifyScreen(QWidget):
         self.audio = QAudioOutput(self)
         if mpv_player.available():
             self.player = mpv_player.MpvPlayer(self)
-            self.player.set_surface(int(self.mpv_surface.winId()))
+            self.player.set_surface(self.mpv_surface)
             self.video_stack.setCurrentWidget(self.mpv_surface)
         else:
             self.player = QMediaPlayer(self)

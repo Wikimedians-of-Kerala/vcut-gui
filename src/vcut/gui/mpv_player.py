@@ -12,6 +12,14 @@ system FFmpeg -- the same one already required here, which does have
 libdav1d. Measured on a real AV1 file: plays it, and seeks to five minutes
 in 34 ms.
 
+Video is drawn with libmpv's render API into a :class:`QOpenGLWidget`
+(``vo=libmpv``), which is how VidCutter does it. The alternative -- handing
+libmpv a native window id with ``wid`` -- is an X11 mechanism with no
+Wayland equivalent, so it only worked by forcing the whole program through
+XWayland. The render API embeds natively on Wayland, X11 and Windows alike.
+Measured on a 2560x1440 AV1 recording under a Wayland session: 764 frames
+in 25 s (the source is 30 fps) and exact seeks in 43 ms.
+
 This class presents the slice of :class:`QMediaPlayer`'s interface the
 screens actually use, so the two are interchangeable and Qt remains the
 fallback when libmpv is not installed.
@@ -21,13 +29,35 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtOpenGLWidgets import QOpenGLWidget
+
+
+def _add_bundled_library_to_path() -> None:
+    """Let the Windows loader find the libmpv DLL shipped beside the program.
+
+    python-mpv loads mpv-2.dll (or libmpv-2.dll) through the ordinary
+    Windows search, which does not include the directory a frozen bundle
+    unpacks into. Without this the packaged build cannot play anything, so
+    the bundle's own directory goes on PATH before the import is tried.
+    Does nothing anywhere else, or when running from a checkout.
+    """
+    import os
+    import sys
+
+    if sys.platform != "win32" or not getattr(sys, "frozen", False):
+        return
+    folder = os.path.dirname(sys.executable)
+    if folder and folder not in os.environ.get("PATH", "").split(os.pathsep):
+        os.environ["PATH"] = folder + os.pathsep + os.environ.get("PATH", "")
 
 
 def available() -> bool:
-    """Whether libmpv and its binding are both present."""
+    """Whether libmpv, its binding and the GL glue are all present."""
+    _add_bundled_library_to_path()
     try:
         import mpv  # noqa: F401
+        from OpenGL import GL  # noqa: F401
     except (ImportError, OSError):
         # OSError is what the binding raises when the shared library is
         # missing, which is a different failure from the module being absent.
@@ -37,6 +67,14 @@ def available() -> bool:
 
 def unavailable_reason() -> str:
     """Why libmpv cannot be used, for telling the user something useful."""
+    _add_bundled_library_to_path()
+    try:
+        from OpenGL import GL  # noqa: F401
+    except ImportError:
+        return (
+            "The PyOpenGL package is not installed. Install it with "
+            "'pip install PyOpenGL' to play AV1 video."
+        )
     try:
         import mpv  # noqa: F401
     except ImportError:
@@ -53,6 +91,121 @@ def unavailable_reason() -> str:
     return ""
 
 
+def _get_proc_address(_ctx, name):
+    """Hand libmpv the address of a GL function, as its renderer requires."""
+    from ctypes import c_char_p, c_void_p
+
+    from OpenGL.platform import PLATFORM
+
+    lookup = PLATFORM.getExtensionProcedure
+    lookup.argtypes = [c_char_p]
+    lookup.restype = c_void_p
+    address = lookup(name)
+    return int(address) if address else 0
+
+
+class MpvSurface(QOpenGLWidget):
+    """The widget libmpv draws video into.
+
+    libmpv renders through the GL context this widget already owns, so the
+    video lands inside the window on any platform Qt runs on -- no native
+    window id, and so no X11 or XWayland requirement.
+    """
+
+    #: mpv signals a new frame from its own render thread. Qt widgets may
+    #: only be touched on the GUI thread, so the request crosses over as a
+    #: queued signal rather than a direct call.
+    _frame_ready = Signal()
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._context = None
+        self._mpv = None
+        self._on_ready = None
+        self._frame_ready.connect(self.update, Qt.QueuedConnection)
+
+    def attach(self, player_mpv, on_ready) -> None:
+        """Bind an mpv instance, rendering as soon as GL is up.
+
+        The GL context does not exist until Qt shows the widget, and the
+        render context cannot be built before it, so loading a file waits
+        for :meth:`initializeGL`.
+        """
+        self._mpv = player_mpv
+        self._on_ready = on_ready
+        self._build_context()
+        if self._context is None:
+            # GL is not up yet. paintGL() builds the context on its first
+            # run, which Qt schedules as soon as the widget is shown.
+            self.update()
+
+    def _build_context(self) -> None:
+        """Create the render context, once there is both GL and an mpv.
+
+        Qt calls initializeGL() when the widget is first shown, which may
+        be either side of the player handing over its mpv instance, so this
+        is driven from both and does nothing until both are in place.
+        """
+        if self._context is not None or self._mpv is None or not self.isValid():
+            return
+
+        import mpv
+
+        # The callback has to be a ctypes function pointer: libmpv calls it
+        # from C, and a plain Python function is rejected outright. Keep a
+        # reference -- ctypes does not, and a collected callback crashes.
+        self._proc_address = mpv.MpvGlGetProcAddressFn(_get_proc_address)
+        try:
+            self._context = mpv.MpvRenderContext(
+                self._mpv,
+                "opengl",
+                opengl_init_params={"get_proc_address": self._proc_address},
+            )
+        except Exception:  # noqa: BLE001 - reported by the player, not here
+            self._context = None
+            return
+        self._context.update_cb = self._frame_ready.emit
+        if self._on_ready is not None:
+            ready, self._on_ready = self._on_ready, None
+            ready()
+
+    def initializeGL(self) -> None:  # noqa: N802 - Qt's name
+        self._build_context()
+
+    def paintGL(self) -> None:  # noqa: N802 - Qt's name
+        if self._context is None:
+            # The GL context exists by the time Qt paints, so this is the
+            # first moment the render context can be built when the file
+            # was set before the widget was shown.
+            self._build_context()
+        if self._context is None:
+            return
+        # No glClear here: mpv paints every pixel of the viewport itself,
+        # and PyOpenGL resolves its own context separately from Qt's, so a
+        # clear through it fails with "invalid enumerant" on this path.
+        ratio = self.devicePixelRatioF()
+        self._context.render(
+            flip_y=True,
+            opengl_fbo={
+                "w": int(self.width() * ratio),
+                "h": int(self.height() * ratio),
+                "fbo": self.defaultFramebufferObject(),
+            },
+        )
+
+    def detach(self) -> None:
+        """Drop the render context, before the mpv instance goes away."""
+        context, self._context = self._context, None
+        self._mpv = None
+        self._on_ready = None
+        if context is not None:
+            context.update_cb = None
+            try:
+                context.free()
+            except Exception:  # noqa: BLE001 - already gone is fine
+                pass
+
+
 class MpvPlayer(QObject):
     """libmpv behind the part of QMediaPlayer's interface the screens use."""
 
@@ -64,7 +217,7 @@ class MpvPlayer(QObject):
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._mpv = None
-        self._window_id: int | None = None
+        self._surface: MpvSurface | None = None
         self._duration_ms = 0
         self._position_ms = 0
         self._source = ""
@@ -79,13 +232,13 @@ class MpvPlayer(QObject):
 
     # -- wiring ------------------------------------------------------------
 
-    def set_surface(self, window_id: int) -> None:
-        """Render into an existing native window.
+    def set_surface(self, surface: "MpvSurface") -> None:
+        """Render into the given :class:`MpvSurface`.
 
-        Must be called before the first file is loaded: libmpv binds its
-        output window when it starts.
+        Must be called before the first file is loaded: the render context
+        is built on top of that widget's GL context.
         """
-        self._window_id = int(window_id)
+        self._surface = surface
 
     def _ensure(self):
         if self._mpv is not None:
@@ -101,6 +254,7 @@ class MpvPlayer(QObject):
 
         locale.setlocale(locale.LC_NUMERIC, "C")
 
+        _add_bundled_library_to_path()
         import mpv
 
         options = {
@@ -114,8 +268,11 @@ class MpvPlayer(QObject):
             "input_default_bindings": False,
             "input_vo_keyboard": False,
         }
-        if self._window_id is not None:
-            options["wid"] = str(self._window_id)
+        if self._surface is not None:
+            # Render through the widget's own GL context rather than taking
+            # a window of our own, which is what keeps the video inside the
+            # program on Wayland.
+            options["vo"] = "libmpv"
 
         self._mpv = mpv.MPV(**options)
         return self._mpv
@@ -142,10 +299,25 @@ class MpvPlayer(QObject):
 
         try:
             player = self._ensure()
-            player.play(path)
+            if self._surface is not None:
+                # The render context needs the widget's GL context, which Qt
+                # only creates once the widget is shown. attach() starts the
+                # file now if GL is already up, or as soon as it is.
+                self._surface.attach(player, lambda: self._start(path))
+            else:
+                self._start(path)
+        except Exception as exc:  # noqa: BLE001 - report, never raise
+            self.errorOccurred.emit(None, f"libmpv could not open the file: {exc}")
+
+    def _start(self, path: str) -> None:
+        """Open the file, once there is somewhere to draw it."""
+        if self._mpv is None:
+            return
+        try:
+            self._mpv.play(path)
             # Paused on arrival, like QMediaPlayer: the screen decides when
             # to start, and a recording that plays itself is startling.
-            player.pause = True
+            self._mpv.pause = True
             self._poll.start()
         except Exception as exc:  # noqa: BLE001 - report, never raise
             self.errorOccurred.emit(None, f"libmpv could not open the file: {exc}")
@@ -247,6 +419,10 @@ class MpvPlayer(QObject):
         self._poll.stop()
         player, self._mpv = self._mpv, None
         self._source = ""
+        # The render context points at the mpv instance, so it has to go
+        # first or libmpv is left rendering into something freed.
+        if self._surface is not None:
+            self._surface.detach()
         if player is not None:
             try:
                 player.terminate()
