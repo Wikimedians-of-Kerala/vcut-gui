@@ -1,5 +1,65 @@
 # Changelog
 
+## 1.4.0 — 2026-10-05
+
+Naming, licensing, and a home for the settings that had none.
+
+### New
+
+- **A Settings window**, under `File > Settings…`. Several options had no
+  interface at all — the name patterns, subfolders, name length, ASCII
+  transliteration, how long a fetched schedule is kept, offline mode, and
+  the description files written beside each video. They are grouped by
+  where a name is used: on Commons, or on disk.
+- **A licence picker.** `Choose…` beside the licence box offers the ones a
+  conference team reaches for — CC BY-SA 4.0 first as the Wikimedia
+  default, then CC BY 4.0, CC0, the two older CC versions, and public
+  domain. Each template was checked to exist on Commons, and each says what
+  it means, since the difference between BY and BY-SA is the whole
+  decision. Anything not listed can still be typed, which is how an
+  event-specific permission template keeps working.
+- **The schedule's talk code can be left out of Commons names.** It makes
+  every name unique, which matters when two sessions share a title, but it
+  means nothing to a reader who has never heard of pretalx.
+- **Words can be joined with something other than a space.** Worth being
+  plain about what this does: Commons stores titles with spaces and shows
+  underscores only in addresses, and treats the two as the same character,
+  so this changes how a name looks rather than how Commons files it.
+- **An upload can replace an existing file as a new version.** A name
+  already in use now raises its own error rather than a generic warning,
+  because unlike every other failure there is something to offer.
+- **The date override is a calendar**, not a text box: typing a date
+  invites the wrong format and Commons wants ISO. A checkbox decides
+  whether there is an override at all, since the usual answer is to take
+  each clip's date from the schedule.
+
+### Changed
+
+- The Commons details panel is three compact rows rather than three sparse
+  ones, recovering about 60px for the table underneath.
+- Video information moved from File to View. It opens nothing and changes
+  nothing.
+
+### Fixed
+
+- **The date picker was never styled.** `QDateEdit` was missing from the
+  field rules, so it kept Qt's cramped defaults while every field beside it
+  was taller. Its calendar button now gets the same panel a dropdown arrow
+  has.
+- **List rows had no padding**, so the licence text ran off the right edge.
+  Rows now wrap, with the name in bold.
+- **In light theme, unselected licence rows rendered blank.** A label inside
+  an item widget is not reached by `QListWidget::item` rules and inherits
+  nothing; the colours are now set from the palette directly. The selected
+  row also kept its muted grey against a strong blue.
+- **The cut-mode note never updated for MP4.** It was rebuilt after an early
+  return that fires for any format without a speed setting — which is
+  exactly the MP4 case where stream copy is the useful choice, so the screen
+  claimed copying could not change the codec while offering the one format
+  where it can.
+- Turning the date override off left the date in place, because the refresh
+  read `date_field.text()`, which on a calendar field is never empty.
+
 ## 1.3.0 — 2026-10-04
 
 - **The Commons name can be typed, separately from the file on disk.** The
