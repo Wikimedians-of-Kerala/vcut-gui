@@ -397,7 +397,7 @@ def test_the_package_script_reads_the_version_from_the_program():
     """
     from pathlib import Path
 
-    script = Path("packaging/build-packages.sh").read_text()
+    script = read("packaging/build-packages.sh")
     assert "src/vcut/__init__.py" in script
     # Not hard-coded anywhere in it.
     assert "Version: 1." not in script
@@ -412,7 +412,7 @@ def test_the_packages_require_libmpv():
     """
     from pathlib import Path
 
-    script = Path("packaging/build-packages.sh").read_text()
+    script = read("packaging/build-packages.sh")
     assert "libmpv2 | libmpv1" in script     # Debian, Ubuntu
     assert "mpv-libs" in script              # Fedora, openSUSE
 
@@ -426,7 +426,7 @@ def test_the_rpm_does_not_require_ffmpeg():
     """
     from pathlib import Path
 
-    script = Path("packaging/build-packages.sh").read_text()
+    script = read("packaging/build-packages.sh")
     spec = script.split("Building the .rpm")[1]
     assert "Requires:       ffmpeg" not in spec
     # And the reason is written down next to it.
@@ -442,5 +442,5 @@ def test_the_rpm_does_not_scan_the_bundle_for_dependencies():
     """
     from pathlib import Path
 
-    script = Path("packaging/build-packages.sh").read_text()
+    script = read("packaging/build-packages.sh")
     assert "AutoReqProv:    no" in script

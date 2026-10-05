@@ -113,6 +113,9 @@ jobs:
         with:
           name: vcut-gui-linux
           path: dist/vcut-gui-linux.tar.gz
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0   # already a .tar.gz; recompressing wastes minutes
       - uses: actions/upload-artifact@v5
         with:
           name: vcut-gui-packages
@@ -120,9 +123,8 @@ jobs:
             dist/vcut-gui_*_amd64.deb
             dist/vcut-gui-*-1.x86_64.rpm
           if-no-files-found: error
-          if-no-files-found: error
           retention-days: 90
-          compression-level: 0   # already a .tar.gz; recompressing wastes minutes
+          compression-level: 0   # .deb and .rpm are already compressed
 
   windows:
     runs-on: windows-latest

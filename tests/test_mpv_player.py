@@ -179,7 +179,7 @@ def test_windows_bundles_libmpv():
     """
     from pathlib import Path
 
-    script = Path("packaging/build-windows.ps1").read_text()
+    script = Path("packaging/build-windows.ps1").read_text(encoding="utf-8")
     assert "libmpv-2.dll" in script
     # The build must fail rather than quietly ship a player that cannot
     # decode anything.
@@ -220,7 +220,7 @@ def test_the_release_refuses_a_windows_build_without_libmpv():
     """
     from pathlib import Path
 
-    workflow = Path(".github/workflows/release.yml").read_text()
+    workflow = Path(".github/workflows/release.yml").read_text(encoding="utf-8")
     assert "libmpv-2" in workflow
     assert "AV1 will not play" in workflow
 
@@ -229,7 +229,7 @@ def test_the_opengl_modules_are_packaged():
     """PyInstaller cannot see either by following imports."""
     from pathlib import Path
 
-    spec = Path("vcut-gui.spec").read_text()
+    spec = Path("vcut-gui.spec").read_text(encoding="utf-8")
     assert "PySide6.QtOpenGLWidgets" in spec
     # PyOpenGL picks its backend at runtime.
     assert "OpenGL.platform" in spec

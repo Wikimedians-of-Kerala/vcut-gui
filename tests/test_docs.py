@@ -104,7 +104,7 @@ def test_the_guide_does_not_name_a_player_that_is_no_longer_used():
     backend. Video is libmpv's job now, so that advice would waste a
     user's time at the moment something is already wrong.
     """
-    guide = (DOCS / "GUIDE.md").read_text()
+    guide = read("docs/GUIDE.md")
     assert "gstreamer" not in guide.lower()
     assert "libmpv" in guide
 
@@ -116,7 +116,7 @@ def test_the_build_guide_records_the_windows_libmpv_download():
     a maintainer needs to know about -- for offline builds, and because it
     is a dependency on someone else's release schedule.
     """
-    building = (DOCS / "BUILDING.md").read_text()
+    building = read("docs/BUILDING.md")
     assert "libmpv-2.dll" in building
     assert "mpv-winbuild-cmake" in building
     # And why Linux is treated differently.
@@ -131,8 +131,39 @@ def test_the_build_guide_covers_the_distribution_packages():
     there is nothing to compile -- and someone reaching for one of those
     would spend a day finding that out.
     """
-    building = (DOCS / "BUILDING.md").read_text()
+    building = read("docs/BUILDING.md")
     assert "build-packages.sh" in building
     # The two differ in what they can require, which is easy to get wrong.
     assert "RPM Fusion" in building
     assert "mpv-libs" in building
+
+
+def test_every_file_is_read_as_utf_8():
+    """Reading without an encoding fails on Windows, not here.
+
+    Path.read_text() uses the system encoding, which is cp1252 on a
+    Windows runner. The guides use em-dashes, so a bare read_text() passes
+    on Linux and fails the Windows job -- which is exactly how this was
+    found, after the fact.
+    """
+    import ast
+    from pathlib import Path
+
+    # Parsed rather than grepped, so prose in a docstring -- this one
+    # included -- is not mistaken for a call.
+    offenders = []
+    for path in sorted(Path("tests").glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "read_text"
+                and not node.args
+                and not node.keywords
+            ):
+                offenders.append(f"{path}:{node.lineno}")
+    assert not offenders, (
+        "read_text() without encoding='utf-8' breaks on Windows: "
+        + ", ".join(offenders)
+    )
