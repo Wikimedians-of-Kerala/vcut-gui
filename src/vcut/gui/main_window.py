@@ -232,14 +232,21 @@ class MainWindow(QMainWindow):
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
 
+        settings_action = QAction("&Settings…", self)
+        settings_action.setShortcut(QKeySequence.Preferences)
+        settings_action.triggered.connect(self._show_settings)
+        file_menu.insertAction(ffmpeg_action, settings_action)
+
+        view_menu = self.menuBar().addMenu("&View")
+
+        # Looking at the source video is a View action, not a File one: it
+        # opens nothing and changes nothing.
         self.info_action = QAction("&Video information…", self)
         self.info_action.setShortcut("Ctrl+I")
         self.info_action.setEnabled(False)
         self.info_action.triggered.connect(self._show_media_info)
-        file_menu.insertAction(save_action, self.info_action)
-        file_menu.insertSeparator(save_action)
+        view_menu.addAction(self.info_action)
 
-        view_menu = self.menuBar().addMenu("&View")
         log_action = self.log_dock.toggleViewAction()
         log_action.setText("Show &log")
         view_menu.addAction(log_action)
@@ -472,6 +479,16 @@ class MainWindow(QMainWindow):
         dialog = LoginDialog(self)
         dialog.logged_in.connect(lambda _u: self.upload_screen.check_login())
         dialog.exec()
+
+    def _show_settings(self) -> None:
+        from .settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(self.state.settings, self)
+        if dialog.exec() == SettingsDialog.Accepted:
+            # Names are rebuilt from the new rules; anything typed by hand
+            # on the metadata screen is left as the user wrote it.
+            self.metadata_screen.refresh()
+            self.statusBar().showMessage("Settings saved.", 3000)
 
     def _show_ffmpeg_settings(self) -> None:
         from .ffmpeg_dialog import FFmpegDialog

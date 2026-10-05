@@ -182,7 +182,7 @@ def stylesheet(theme: Theme) -> str:
     up_rule = f"image: url({arrow_up});" if arrow_up else ""
     down_rule = f"image: url({arrow_small});" if arrow_small else ""
     return f"""
-    QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox {{
+    QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox, QDateEdit {{
         min-height: {FIELD_HEIGHT}px;
         padding: {FIELD_PADDING_V}px {FIELD_PADDING_H}px;
         border: 1px solid {border};
@@ -190,10 +190,11 @@ def stylesheet(theme: Theme) -> str:
         background: {colours["base"]};
         selection-background-color: {colours["highlight"]};
     }}
-    QComboBox:focus, QLineEdit:focus, QSpinBox:focus {{
+    QComboBox:focus, QLineEdit:focus, QSpinBox:focus, QDateEdit:focus {{
         border: 1px solid {colours["highlight"]};
     }}
-    QComboBox:disabled, QLineEdit:disabled, QSpinBox:disabled {{
+    QComboBox:disabled, QLineEdit:disabled, QSpinBox:disabled,
+    QDateEdit:disabled {{
         color: {colours["disabled"]};
     }}
     /* A tinted panel and a divider, so a combo box is visibly more than a
@@ -210,6 +211,30 @@ def stylesheet(theme: Theme) -> str:
     QComboBox::drop-down:hover {{ background: {colours["highlight"]}; }}
     QComboBox::down-arrow {{ {arrow_rule} width: 10px; height: 6px; }}
     QComboBox::down-arrow:disabled {{ opacity: 0.4; }}
+
+    /* The calendar button, given the same panel as a combo box arrow so it
+       reads as something to press rather than part of the text. */
+    QDateEdit::drop-down {{
+        subcontrol-origin: padding;
+        subcontrol-position: top right;
+        width: 28px;
+        border-left: 1px solid {border};
+        border-top-right-radius: 4px;
+        border-bottom-right-radius: 4px;
+        background: {colours["button"]};
+    }}
+    QDateEdit::drop-down:hover {{ background: {colours["highlight"]}; }}
+    QDateEdit::down-arrow {{ {arrow_rule} width: 10px; height: 6px; }}
+
+    /* The calendar itself, which Fusion leaves cramped and hard to read. */
+    QCalendarWidget QAbstractItemView {{
+        selection-background-color: {colours["highlight"]};
+        selection-color: {colours["highlight_text"]};
+        outline: none;
+    }}
+    QCalendarWidget QWidget#qt_calendar_navigationbar {{
+        background: {colours["alternate"]};
+    }}
 
     /* Spin boxes get the same treatment: their steppers are otherwise almost
        invisible against a restyled field. */
@@ -301,6 +326,43 @@ def stylesheet(theme: Theme) -> str:
         selection-background-color: {colours["highlight"]};
     }}
     QTableWidget::item {{ padding: 6px 8px; }}
+
+    /* Rows in a plain list, which Fusion packs tightly. The licence picker
+       carries a name and an explanation in each row, so it needs the room
+       more than most. */
+    QListWidget {{
+        border: 1px solid {border};
+        border-radius: 4px;
+        background: {colours["base"]};
+        outline: none;
+    }}
+    QListWidget::item {{
+        padding: {SPACE_TIGHT}px {SPACE_ROW}px;
+        border-bottom: 1px solid {border};
+    }}
+    QListWidget::item:selected {{
+        background: {colours["highlight"]};
+        color: {colours["highlight_text"]};
+    }}
+    /* A row built from labels needs its colours stated outright. Without
+       the first rule the text inherits nothing and vanishes on a light
+       background; without the second, the muted explanation stays grey on
+       the selection and becomes unreadable. */
+    QListWidget QLabel {{
+        color: {colours["text"]};
+        background: transparent;
+    }}
+    QListWidget QLabel#screenSubheading {{
+        color: {colours["disabled"]};
+        background: transparent;
+    }}
+    QListWidget::item:selected QLabel,
+    QListWidget::item:selected QLabel#screenSubheading {{
+        color: {colours["highlight_text"]};
+    }}
+    QListWidget::item:hover:!selected {{
+        background: {colours["alternate"]};
+    }}
     /* A visible grip on the divider, so it reads as draggable. The right
        border is drawn thicker and lighter than the grid lines. */
     QHeaderView::section:horizontal {{
