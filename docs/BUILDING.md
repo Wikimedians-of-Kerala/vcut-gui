@@ -128,6 +128,30 @@ on the machine.
 The steps mirror the Linux script, including the `--self-test` launch, and the
 result is `dist\vcut-gui-windows.zip`.
 
+### libmpv is downloaded during the build
+
+Windows has no package to depend on for libmpv, so the build fetches it:
+`libmpv-2.dll` from the latest [mpv-winbuild-cmake][mpvwin] release, extracted
+with 7-Zip and copied in beside the executable. It adds about 120 MB to the
+unpacked bundle.
+
+[mpvwin]: https://github.com/shinchiro/mpv-winbuild-cmake/releases
+
+Two consequences worth knowing:
+
+- **The Windows build needs a network connection.** The Linux build does not.
+  If the DLL is already in `dist\vcut-gui\`, the step is skipped, so a
+  rebuild is offline.
+- **The build fails rather than shipping without it.** A bundle missing the
+  DLL would start, look correct, and show a black rectangle for AV1 — the
+  format this program recommends for Commons. The release workflow checks the
+  archive for it as well.
+
+Qt alone cannot decode AV1: its bundled FFmpeg has no AV1 decoder compiled in.
+The program puts its own directory on `PATH` before importing python-mpv,
+which is how the shipped DLL is found at all — Windows does not search the
+program's own folder for it otherwise.
+
 ### Testing what you built
 
 Unpack the zip somewhere and run `vcut-gui.exe`. Test from an **unpacked**
@@ -346,6 +370,17 @@ clearly, with installation instructions, when they are missing.
 
 To ship it anyway, copy `ffmpeg` and `ffprobe` (with `.exe` on Windows) into
 `dist/vcut-gui/` beside the executable. They are found there before `PATH`.
+
+### libmpv is included on Windows, but not on Linux
+
+The opposite of FFmpeg's treatment, for a plain reason: Linux distributions
+package libmpv (`libmpv2` on Debian and Ubuntu), and Windows has nothing to
+depend on. A Windows user with no DLL has no reasonable way to fix it, so the
+build fetches one; a Linux user installs a package.
+
+Nothing is lost when it is absent. The program falls back to Qt's player,
+which shows every format except AV1, and says which one is in use under
+*Help > About*.
 
 ### What is deliberately left out
 

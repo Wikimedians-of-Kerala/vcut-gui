@@ -221,6 +221,20 @@ the MP4 for reviewing, the WebM for uploading.
 Converting everything is an overnight job. Start it when you are done for the
 day.
 
+### Watching a clip
+
+*Play clip* opens the finished file in a window of its own, which answers a
+different question from screen 2: not where to cut, but whether this
+particular file is the one worth uploading.
+
+The transport has play, a second or ten either way, and jumps to the start
+and end, with volume and mute at the right. When the window was opened from
+the clip list, a chooser at the top moves between clips without closing it —
+checking a day of cuts does not mean opening twenty windows.
+
+AV1 clips play here like any other. Earlier versions could not show them and
+handed the file to the desktop's player instead.
+
 ### Which format
 
 | Format | When to choose it |
@@ -393,10 +407,15 @@ WebM (VP9) instead — Commons accepts it, and it is what Commons serves to
 viewers anyway.
 
 **The video will not play, but cutting works.** The player and the cutter are
-different machinery: Qt plays the video, FFmpeg cuts it. Qt needs its own
-backend, which on Debian or Ubuntu means
-`sudo apt install libgstreamer1.0-0 gstreamer1.0-plugins-good gstreamer1.0-libav`.
-Cutting is unaffected either way.
+different machinery: libmpv shows the video, FFmpeg cuts it. Install libmpv —
+on Debian or Ubuntu, `sudo apt install libmpv2` — and reopen the program. The
+packaged Windows build carries its own copy.
+
+Without it the program falls back to Qt's player, which shows everything
+except AV1: Qt carries its own FFmpeg build with no AV1 decoder compiled in,
+so an AV1 recording appears as a black rectangle with no error. *Help > About*
+says which player is in use. Cutting and converting are unaffected either
+way — those are the system FFmpeg's job.
 
 **A clip opens on the end of the previous session.** The cut snapped to a
 keyframe. Check that cut accuracy is on *Accurate, fast seek* rather than

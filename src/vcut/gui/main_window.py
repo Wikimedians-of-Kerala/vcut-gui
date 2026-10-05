@@ -534,6 +534,20 @@ class MainWindow(QMainWindow):
     def _about(self) -> None:
         from .. import __version__
 
+        from .mpv_player import available as mpv_available
+        from .mpv_player import unavailable_reason
+
+        # Which player is in use is the first thing worth knowing when the
+        # picture misbehaves: Qt's own cannot decode AV1, which is the format
+        # this program recommends for Commons.
+        if mpv_available():
+            player = "Video: libmpv, which plays AV1."
+        else:
+            player = (
+                "Video: Qt's player, which cannot show AV1. "
+                + unavailable_reason()
+            )
+
         box = QMessageBox(self)
         box.setWindowTitle("About vcut")
         box.setTextFormat(Qt.RichText)
@@ -542,6 +556,7 @@ class MainWindow(QMainWindow):
             "Cuts conference recordings into per-session clips, fetches each "
             "session's details from an Eventyay/pretalx schedule, and prepares "
             "them for Wikimedia Commons.<br><br>"
+            f"{player}<br><br>"
             "Licensed under the GNU GPL v3 or later."
         )
         pixmap = logo_pixmap(96)

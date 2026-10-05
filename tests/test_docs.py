@@ -95,3 +95,29 @@ def test_packaging_metadata_points_at_the_repository():
     assert urls["Homepage"] == REPO
     for value in urls.values():
         assert value.startswith(REPO), value
+
+
+def test_the_guide_does_not_name_a_player_that_is_no_longer_used():
+    """Troubleshooting advice must point at the machinery actually in use.
+
+    The guide used to send people to install GStreamer, which was Qt's
+    backend. Video is libmpv's job now, so that advice would waste a
+    user's time at the moment something is already wrong.
+    """
+    guide = (DOCS / "GUIDE.md").read_text()
+    assert "gstreamer" not in guide.lower()
+    assert "libmpv" in guide
+
+
+def test_the_build_guide_records_the_windows_libmpv_download():
+    """A build-time network fetch is not something to discover by surprise.
+
+    The Windows build pulls a 120 MB DLL from a third-party release, which
+    a maintainer needs to know about -- for offline builds, and because it
+    is a dependency on someone else's release schedule.
+    """
+    building = (DOCS / "BUILDING.md").read_text()
+    assert "libmpv-2.dll" in building
+    assert "mpv-winbuild-cmake" in building
+    # And why Linux is treated differently.
+    assert "libmpv2" in building
