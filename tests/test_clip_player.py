@@ -153,18 +153,18 @@ def test_without_a_list_there_is_no_chooser(qt_app, tmp_path):
     assert dialog.chooser is None
 
 
-def test_an_av1_clip_says_why_it_will_not_play(qt_app, tmp_path):
-    """Qt ships no AV1 decoder, and fails silently when asked for one.
+def test_an_av1_clip_plays_through_pyav(qt_app, tmp_path):
+    """Qt ships no AV1 decoder, so AV1 is decoded with PyAV instead.
 
-    Measured on the same three seconds of video: 0 frames delivered as AV1,
-    87 as VP9 or H.264, with the player reporting PlayingState and NoError
-    throughout. Without this check the window is simply black.
-
-    AV1 is what this program recommends for Commons, so its own output is
-    exactly what cannot be previewed.
+    Measured before this: the same three seconds delivered 0 frames as AV1
+    and 87 as VP9 or H.264, with Qt reporting PlayingState and no error --
+    a black rectangle and nothing to explain it. AV1 is the format this
+    program recommends for Commons, so its own output was what could not be
+    previewed.
     """
     import subprocess
 
+    from vcut.gui import av_playback
     from vcut.gui.clip_player_dialog import ClipPlayerDialog
 
     clip = tmp_path / "clip.webm"
@@ -178,10 +178,24 @@ def test_an_av1_clip_says_why_it_will_not_play(qt_app, tmp_path):
         pytest.skip("this ffmpeg cannot encode AV1")
 
     dialog = ClipPlayerDialog(str(clip), "An AV1 clip")
-    assert "AV1" in dialog.status.text()
-    assert not dialog.play_button.isEnabled()
-    # The file is fine; it is the built-in player that cannot manage it.
-    assert "uploads to Commons normally" in dialog.status.text()
+    if av_playback.can_decode("av1"):
+        # Decoded in software rather than refused.
+        assert dialog._playback is not None
+        assert "AV1" in dialog.status.text()
+        dialog.accept()
+    else:
+        # Without PyAV it must still say why, not show black.
+        assert not dialog.play_button.isEnabled()
+        assert "cannot decode" in dialog.status.text()
+
+
+def test_pyav_can_decode_what_qt_cannot():
+    from vcut.gui import av_playback
+
+    if not av_playback.available():
+        pytest.skip("PyAV is not installed")
+    # This is the whole reason for the dependency.
+    assert av_playback.can_decode("av1")
 
 
 def test_a_playable_codec_is_not_blocked(qt_app, tmp_path):
