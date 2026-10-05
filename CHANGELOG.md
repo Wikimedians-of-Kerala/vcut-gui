@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.5.0 — 2026-10-05
+
+### New
+
+- **Watch a cut clip from the metadata screen.** *Play this clip*, or
+  double-click a file in the list, opens a player on that clip. A window
+  rather than a panel: the screen has no room beside the description editor,
+  and a second embedded player would hold a decoder open against the memory
+  the encoder wants. A dropdown lists every clip, so a day of cuts can be
+  checked without closing and reopening for each one; clips not yet cut are
+  listed but cannot be chosen, so a gap in the day stays visible. The
+  converted copy is played when there is one, since that is the file that
+  would be uploaded.
+
+### Fixed
+
+- **An AV1 clip played as a black rectangle.** Qt Multimedia carries its own
+  FFmpeg build, and that build ships no AV1 decoder — no libdav1d, no
+  libaom — while the FFmpeg this program cuts and converts with has three.
+  So a clip encoded perfectly and then showed nothing, with the player
+  reporting that it was playing and no error at all. Measured on the same
+  three seconds of video: 0 frames delivered as AV1, 87 as VP9 or H.264.
+
+  AV1 is the format recommended for Commons, so the program's own output is
+  exactly what could not be previewed. The player now checks the codec first
+  and says so plainly — the file is fine, it plays in VLC or a browser and
+  uploads normally — and offers to open it in the desktop's own player.
+
 ## 1.4.0 — 2026-10-05
 
 Naming, licensing, and a home for the settings that had none.
