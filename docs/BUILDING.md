@@ -25,6 +25,7 @@ ready-made package instead: [INSTALL.md](../INSTALL.md).
 | Command | Produces | Runs on |
 | --- | --- | --- |
 | `./packaging/build-linux.sh` | `dist/vcut-gui-linux.tar.gz` | Linux, no Python needed |
+| `./packaging/build-packages.sh` | `dist/*.deb` and `dist/*.rpm` | Linux, after the above |
 | `packaging\build-windows.ps1` | `dist\vcut-gui-windows.zip` | Windows, no Python needed |
 | `uv build` | `dist/*.whl` and `dist/*.tar.gz` | Anywhere with Python 3.11+ |
 
@@ -96,6 +97,41 @@ and no separate player window.
 
 These are what the CI workflow installs. On a normal desktop they are already
 there.
+
+### Building a .deb and an .rpm
+
+After `build-linux.sh`, and on a machine with `dpkg-deb` and `rpmbuild`:
+
+```sh
+./packaging/build-packages.sh
+```
+
+This produces `dist/vcut-gui_<version>_amd64.deb` and
+`dist/vcut-gui-<version>-1.x86_64.rpm`, both around 100 MB.
+
+**Nothing is compiled.** PyInstaller has already embedded Python and Qt, so
+the packages carry that directory and the handful of files `install.sh` would
+otherwise place by hand: `/opt/vcut-gui`, a symlink at `/usr/bin/vcut-gui`,
+the menu entry and the icon. That is why no distribution build service —
+OBS, Copr, Launchpad — is needed. Those exist to compile from source across
+many distribution versions, and there is no source here to compile.
+
+The two differ in what they require:
+
+| | `.deb` | `.rpm` |
+| --- | --- | --- |
+| FFmpeg | `ffmpeg` | *not required* |
+| libmpv | `libmpv2 \| libmpv1` | `mpv-libs` |
+
+FFmpeg is deliberately absent from the `.rpm`: it is not in Fedora's own
+repositories — it comes from RPM Fusion — so requiring it would make the
+package refuse to install on a stock system. The program already detects a
+missing FFmpeg and says how to install it, which is a better failure than an
+uninstallable package.
+
+`AutoReqProv: no` is set for the same class of reason. Left on, `rpmbuild`
+reads every bundled library and demands the system provide them all, which
+is precisely what a self-contained bundle exists to avoid.
 
 ### Testing what you built
 

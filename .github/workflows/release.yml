@@ -89,10 +89,37 @@ jobs:
             echo
             echo "Download it from **Artifacts** at the bottom of this page."
           } >> "$GITHUB_STEP_SUMMARY"
+      # The .deb and .rpm wrap the bundle that was just built rather than
+      # building it again, so this costs seconds, not another full build.
+      # Nothing is compiled, which is why no distro build service is needed.
+      - name: Build the .deb and .rpm
+        run: |
+          sudo apt-get install -y rpm
+          ./packaging/build-packages.sh
+      - name: Check the packages
+        run: |
+          deb=dist/vcut-gui_*_amd64.deb
+          rpm=dist/vcut-gui-*-1.x86_64.rpm
+          dpkg-deb -I $deb
+          # A package that declares no libmpv installs and then cannot show
+          # AV1 -- the format this program recommends for Commons.
+          dpkg-deb -I $deb | grep -q 'Depends:.*libmpv' \
+            || { echo "::error::the .deb does not depend on libmpv"; exit 1; }
+          stub=$(mktemp -d)
+          rpm -qpR --dbpath "$stub" $rpm | grep -q mpv-libs \
+            || { echo "::error::the .rpm does not depend on mpv-libs"; exit 1; }
+          echo "deb $(du -h $deb | cut -f1), rpm $(du -h $rpm | cut -f1)"
       - uses: actions/upload-artifact@v5
         with:
           name: vcut-gui-linux
           path: dist/vcut-gui-linux.tar.gz
+      - uses: actions/upload-artifact@v5
+        with:
+          name: vcut-gui-packages
+          path: |
+            dist/vcut-gui_*_amd64.deb
+            dist/vcut-gui-*-1.x86_64.rpm
+          if-no-files-found: error
           if-no-files-found: error
           retention-days: 90
           compression-level: 0   # already a .tar.gz; recompressing wastes minutes
@@ -213,8 +240,13 @@ jobs:
             See [CHANGELOG.md](../../blob/master/CHANGELOG.md) for what
             changed.
 
+            **Linux:** install the `.deb` (Debian, Ubuntu) or `.rpm`
+            (Fedora, openSUSE) and the program appears in your applications
+            menu. The `.tar.gz` is the same build for any other distribution.
+
             **FFmpeg is not bundled.** Install it separately — see
-            [INSTALL.md](../../blob/master/INSTALL.md).
+            [INSTALL.md](../../blob/master/INSTALL.md). On Fedora it comes
+            from RPM Fusion, which is why the `.rpm` does not require it.
 
             The Windows executable is unsigned, so SmartScreen warns on
             first run: **More info → Run anyway**.

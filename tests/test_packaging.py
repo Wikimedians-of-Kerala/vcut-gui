@@ -239,9 +239,13 @@ def test_both_platforms_are_built():
 
 def test_missing_artifacts_fail_rather_than_release_nothing():
     # upload-artifact is silent by default when it finds no files, which
-    # would publish a release with pieces quietly missing.
+    # would publish a release with pieces quietly missing. Counted against
+    # the number of uploads rather than a fixed number, so adding one
+    # without the guard fails here instead of at the next release.
     workflow = read(".github/workflows/release.yml")
-    assert workflow.count("if-no-files-found: error") == 3
+    uploads = workflow.count("uses: actions/upload-artifact")
+    assert uploads >= 4, "an upload step has gone missing"
+    assert workflow.count("if-no-files-found: error") == uploads
 
 
 def test_packaging_changes_are_built_not_only_tags():
@@ -383,3 +387,60 @@ def test_a_rerun_cannot_cancel_itself():
         line for line in workflow.splitlines() if line.strip().startswith("group:")
     )
     assert "github.run_id" in group, group
+
+
+def test_the_package_script_reads_the_version_from_the_program():
+    """A package that claims a version the program does not is a bad bug.
+
+    It would be reported against the wrong release, and two different
+    builds could carry the same number.
+    """
+    from pathlib import Path
+
+    script = Path("packaging/build-packages.sh").read_text()
+    assert "src/vcut/__init__.py" in script
+    # Not hard-coded anywhere in it.
+    assert "Version: 1." not in script
+
+
+def test_the_packages_require_libmpv():
+    """Without it the program installs and cannot show AV1.
+
+    AV1 is the format this program recommends for Commons, so a package
+    that does not pull libmpv in produces a black rectangle on the screen
+    whose whole purpose is seeing the picture.
+    """
+    from pathlib import Path
+
+    script = Path("packaging/build-packages.sh").read_text()
+    assert "libmpv2 | libmpv1" in script     # Debian, Ubuntu
+    assert "mpv-libs" in script              # Fedora, openSUSE
+
+
+def test_the_rpm_does_not_require_ffmpeg():
+    """Fedora has no ffmpeg of its own, so requiring it breaks installing.
+
+    It comes from RPM Fusion, which a stock system does not have enabled.
+    The program detects a missing FFmpeg and explains, which is a better
+    failure than a package that cannot be installed at all.
+    """
+    from pathlib import Path
+
+    script = Path("packaging/build-packages.sh").read_text()
+    spec = script.split("Building the .rpm")[1]
+    assert "Requires:       ffmpeg" not in spec
+    # And the reason is written down next to it.
+    assert "RPM Fusion" in spec
+
+
+def test_the_rpm_does_not_scan_the_bundle_for_dependencies():
+    """The bundle brings its own Qt and Python.
+
+    With AutoReqProv left on, rpmbuild reads every bundled library and
+    demands the system provide them all -- which is the opposite of what a
+    self-contained bundle is for, and makes the package uninstallable.
+    """
+    from pathlib import Path
+
+    script = Path("packaging/build-packages.sh").read_text()
+    assert "AutoReqProv:    no" in script

@@ -121,3 +121,18 @@ def test_the_build_guide_records_the_windows_libmpv_download():
     assert "mpv-winbuild-cmake" in building
     # And why Linux is treated differently.
     assert "libmpv2" in building
+
+
+def test_the_build_guide_covers_the_distribution_packages():
+    """Why no build service is needed is the part worth writing down.
+
+    OBS, Copr and Launchpad exist to compile from source across many
+    distribution versions. This bundle carries its own Python and Qt, so
+    there is nothing to compile -- and someone reaching for one of those
+    would spend a day finding that out.
+    """
+    building = (DOCS / "BUILDING.md").read_text()
+    assert "build-packages.sh" in building
+    # The two differ in what they can require, which is easy to get wrong.
+    assert "RPM Fusion" in building
+    assert "mpv-libs" in building
