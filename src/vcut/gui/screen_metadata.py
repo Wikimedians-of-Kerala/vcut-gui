@@ -180,6 +180,44 @@ class MetadataScreen(QWidget):
         form.addRow("File naming", naming)
         return group
 
+    def _cell_double_clicked(self, row: int, column: int) -> None:
+        if column == COL_FILE:
+            self.table.setCurrentCell(row, column)
+            self._play_current()
+
+    def _play_current(self) -> None:
+        """Watch the cut clip for the selected row.
+
+        The converted copy is preferred when there is one: that is the file
+        that would be uploaded, so it is the one worth checking.
+        """
+        row = self.table.currentRow()
+        if not (0 <= row < len(self.state.clips)):
+            QMessageBox.information(
+                self, "No clip selected",
+                "Select a clip in the list first.",
+            )
+            return
+
+        clip = self.state.clips[row]
+        path = clip.uploadable_path
+        if not path:
+            QMessageBox.information(
+                self, "Not cut yet",
+                "This clip has not been cut. Split the video first, on the "
+                "previous step.",
+            )
+            return
+
+        from .clip_player_dialog import ClipPlayerDialog
+
+        # The whole list goes with it, so the window can move between clips
+        # without being closed and reopened for each one.
+        ClipPlayerDialog(
+            path, clip.programme, self,
+            clips=list(self.state.clips), current=row,
+        ).exec()
+
     def _choose_licence(self) -> None:
         from .licence_dialog import LicenceDialog
 
@@ -234,6 +272,9 @@ class MetadataScreen(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.currentCellChanged.connect(self._row_changed)
+        # Double-clicking the file is the obvious way to watch it. The other
+        # columns keep their own meaning -- the Commons name is editable.
+        self.table.cellDoubleClicked.connect(self._cell_double_clicked)
         self.table.itemChanged.connect(self._item_changed)
 
         header = self.table.horizontalHeader()
@@ -255,6 +296,7 @@ class MetadataScreen(QWidget):
 
         buttons = QHBoxLayout()
         for text, role, slot in (
+            ("Play this clip", "preview", self._play_current),
             ("Convert this clip", "convert", self._convert_current),
             ("Fetch metadata", "refresh", self._fetch_metadata),
             ("Select all", "select-all", lambda: self._set_all(True)),
