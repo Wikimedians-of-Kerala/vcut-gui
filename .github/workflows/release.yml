@@ -129,6 +129,12 @@ jobs:
             if ($names | Where-Object { $_ -match "(?i)webengine" }) {
               throw "Qt WebEngine is back in the bundle (see docs/BUILDING.md)"
             }
+            # Without libmpv the player cannot decode AV1 -- the format this
+            # program recommends for Commons -- so the picture would be a
+            # black rectangle in the shipped build.
+            if (-not ($names | Where-Object { $_ -match 'libmpv-2\.dll$' })) {
+              throw "libmpv-2.dll is not in the archive: AV1 will not play"
+            }
           } finally { $zip.Dispose() }
       - name: Say where the package is
         shell: pwsh

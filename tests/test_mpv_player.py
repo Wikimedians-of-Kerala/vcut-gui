@@ -211,6 +211,20 @@ def test_the_bundled_dll_can_be_found_at_runtime():
         assert body.index("_add_bundled_library_to_path()") < body.index("import mpv")
 
 
+def test_the_release_refuses_a_windows_build_without_libmpv():
+    """A silent miss here ships a player that cannot decode AV1.
+
+    The DLL is fetched during the build rather than committed, so a change
+    to the release it comes from, or a rename, would otherwise produce an
+    archive that looks fine and shows a black rectangle.
+    """
+    from pathlib import Path
+
+    workflow = Path(".github/workflows/release.yml").read_text()
+    assert "libmpv-2" in workflow
+    assert "AV1 will not play" in workflow
+
+
 def test_the_opengl_modules_are_packaged():
     """PyInstaller cannot see either by following imports."""
     from pathlib import Path
