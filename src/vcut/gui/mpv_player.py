@@ -133,6 +133,13 @@ class MpvSurface(QOpenGLWidget):
         """
         self._mpv = player_mpv
         self._on_ready = on_ready
+        if self._context is not None:
+            # Already rendering -- a second file through the same widget,
+            # which is what the clip player does when the chooser moves to
+            # another clip. Nothing to build, so start it now.
+            ready, self._on_ready = self._on_ready, None
+            ready()
+            return
         self._build_context()
         if self._context is None:
             # GL is not up yet. paintGL() builds the context on its first
@@ -285,6 +292,10 @@ class MpvPlayer(QObject):
         self._position_ms = 0
         self._duration_ms = 0
         self._pending_seek_ms = None
+        # Tell the screen the old file is gone, so a stale duration and
+        # playhead are not left on the transport while the next one loads.
+        self.durationChanged.emit(0)
+        self.positionChanged.emit(0)
 
         if not path:
             if self._mpv is not None:
@@ -293,8 +304,6 @@ class MpvPlayer(QObject):
                 except Exception:  # noqa: BLE001 - nothing playing is fine
                     pass
             self._poll.stop()
-            self.durationChanged.emit(0)
-            self.positionChanged.emit(0)
             return
 
         try:

@@ -110,17 +110,28 @@ class ClipPlayerDialog(QDialog):
                 heading.setWordWrap(True)
                 layout.addWidget(heading)
 
-        self.video = QVideoWidget()
-        self.video.setMinimumSize(480, 270)
-        self.video.setStyleSheet("background: #000;")
-        self.video.setAspectRatioMode(Qt.KeepAspectRatio)
+        # libmpv when it is installed, Qt otherwise. Qt's bundled FFmpeg has
+        # no AV1 decoder, and AV1 is what this program recommends for
+        # Commons -- so without libmpv the player cannot show the very
+        # clips it just produced.
+        from . import mpv_player
 
-        layout.addWidget(self.video, 1)
-
-        self.player = QMediaPlayer(self)
         self.audio = QAudioOutput(self)
+        if mpv_player.available():
+            self.video = mpv_player.MpvSurface()
+            self.video.setMinimumSize(480, 270)
+            layout.addWidget(self.video, 1)
+            self.player = mpv_player.MpvPlayer(self)
+            self.player.set_surface(self.video)
+        else:
+            self.video = QVideoWidget()
+            self.video.setMinimumSize(480, 270)
+            self.video.setStyleSheet("background: #000;")
+            self.video.setAspectRatioMode(Qt.KeepAspectRatio)
+            layout.addWidget(self.video, 1)
+            self.player = QMediaPlayer(self)
+            self.player.setVideoOutput(self.video)
         self.player.setAudioOutput(self.audio)
-        self.player.setVideoOutput(self.video)
         self.player.positionChanged.connect(self._position_changed)
         self.player.durationChanged.connect(self._duration_changed)
         self.player.errorOccurred.connect(self._failed)
@@ -217,7 +228,7 @@ class ClipPlayerDialog(QDialog):
         size = human_size(self._path.stat().st_size)
         codec = self._codec()
 
-        if codec in self.QT_CANNOT_DECODE:
+        if codec in self.QT_CANNOT_DECODE and not self._decodes_everything():
             self.status.show_message(
                 f"This clip is {codec.upper()}, which the built-in player "
                 f"cannot decode. The file itself is fine: it plays in VLC or "
@@ -238,6 +249,12 @@ class ClipPlayerDialog(QDialog):
             return (probe(self._path).video_codec or "").lower()
         except Exception:  # noqa: BLE001 - a probe failure is not fatal
             return ""
+
+    def _decodes_everything(self) -> bool:
+        """Whether the player in use can decode anything ffmpeg can."""
+        from . import mpv_player
+
+        return isinstance(self.player, mpv_player.MpvPlayer)
 
     def _toggle(self) -> None:
         if self.player.playbackState() == QMediaPlayer.PlayingState:
@@ -274,11 +291,11 @@ class ClipPlayerDialog(QDialog):
     # -- closing -----------------------------------------------------------
 
     def closeEvent(self, event) -> None:  # noqa: N802
-        self._release()
+        self._shut_down()
         super().closeEvent(event)
 
     def accept(self) -> None:  # noqa: D102
-        self._release()
+        self._shut_down()
         super().accept()
 
     def _release(self) -> None:
@@ -288,3 +305,18 @@ class ClipPlayerDialog(QDialog):
             self.player.setSource(QUrl())
         except RuntimeError:
             pass
+
+    def _shut_down(self) -> None:
+        """Release the file and, with libmpv, the decoder behind it.
+
+        _release() is also used when switching clips, where the player is
+        wanted again a moment later. This is the closing-the-window case,
+        where the render context and the mpv instance should go too.
+        """
+        self._release()
+        release = getattr(self.player, "release", None)
+        if release is not None:
+            try:
+                release()
+            except RuntimeError:
+                pass
