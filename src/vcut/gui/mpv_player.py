@@ -229,6 +229,8 @@ class MpvPlayer(QObject):
         self._position_ms = 0
         self._source = ""
         self._pending_seek_ms: int | None = None
+        self._volume = 100
+        self._muted = False
 
         # libmpv reports position on its own thread; polling on the GUI
         # thread keeps every signal where Qt wants it. 20 Hz is smooth
@@ -282,6 +284,12 @@ class MpvPlayer(QObject):
             options["vo"] = "libmpv"
 
         self._mpv = mpv.MPV(**options)
+        # Carry over anything set before there was an mpv to set it on.
+        try:
+            self._mpv.volume = self._volume
+            self._mpv.mute = self._muted
+        except Exception:  # noqa: BLE001 - defaults are fine
+            pass
         return self._mpv
 
     # -- the QMediaPlayer-shaped interface ---------------------------------
@@ -392,6 +400,31 @@ class MpvPlayer(QObject):
 
     def setAudioOutput(self, _output) -> None:  # noqa: N802
         """Accepted and ignored: libmpv handles its own audio."""
+
+    # -- sound -------------------------------------------------------------
+
+    def set_volume(self, percent: int) -> None:
+        """Set the volume, 0 to 100."""
+        self._volume = max(0, min(100, int(percent)))
+        if self._mpv is not None:
+            try:
+                self._mpv.volume = self._volume
+            except Exception:  # noqa: BLE001 - nothing playing yet is fine
+                pass
+
+    def volume(self) -> int:
+        return self._volume
+
+    def set_muted(self, muted: bool) -> None:
+        self._muted = bool(muted)
+        if self._mpv is not None:
+            try:
+                self._mpv.mute = self._muted
+            except Exception:  # noqa: BLE001
+                pass
+
+    def is_muted(self) -> bool:
+        return self._muted
 
     def setVideoOutput(self, _output) -> None:  # noqa: N802
         """Accepted and ignored: the surface is set with set_surface()."""

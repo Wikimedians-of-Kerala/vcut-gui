@@ -256,3 +256,77 @@ def test_the_verify_screen_warns_about_an_av1_source(qt_app, tmp_path):
         # And it must say cutting still works, and how to fix the picture.
         assert "cutting" in text.lower()
         assert "libmpv" in text.lower() or "python-mpv" in text.lower()
+
+
+def test_the_transport_has_the_controls_a_player_needs(qt_app, tmp_path):
+    """Play, step, jump to either end, and volume.
+
+    A scrubber and a play button alone leave the user dragging a slider to
+    check whether a cut landed a second early.
+    """
+    from vcut.gui.clip_player_dialog import ClipPlayerDialog
+
+    clip = tmp_path / "clip.mp4"
+    _make_clip(clip, "libx264")
+
+    dialog = ClipPlayerDialog(str(clip))
+    try:
+        for control in (
+            "play_button", "start_button", "end_button",
+            "back1_button", "back10_button",
+            "forward1_button", "forward10_button",
+            "scrubber", "volume", "mute_button",
+        ):
+            assert hasattr(dialog, control), f"no {control}"
+    finally:
+        dialog.accept()
+
+
+def test_stepping_stays_inside_the_clip(qt_app, tmp_path):
+    """Nudging must not run off either end of a short clip."""
+    from vcut.gui.clip_player_dialog import ClipPlayerDialog
+
+    clip = tmp_path / "clip.mp4"
+    _make_clip(clip, "libx264")
+
+    dialog = ClipPlayerDialog(str(clip))
+    try:
+        dialog._nudge(-10_000)
+        assert dialog.player.position() >= 0
+    finally:
+        dialog.accept()
+
+
+def test_the_volume_control_follows_whichever_player_is_used(qt_app, tmp_path):
+    """libmpv takes 0-100, Qt takes 0.0-1.0, and the dialog may use either."""
+    from vcut.gui.clip_player_dialog import ClipPlayerDialog
+
+    clip = tmp_path / "clip.mp4"
+    _make_clip(clip, "libx264")
+
+    dialog = ClipPlayerDialog(str(clip))
+    try:
+        dialog.volume.setValue(40)
+        reported = getattr(dialog.player, "volume", None)
+        if callable(reported):          # libmpv
+            assert reported() == 40
+        else:                            # Qt
+            assert abs(dialog.audio.volume() - 0.40) < 0.01
+
+        # Muting and unmuting must round-trip on both.
+        dialog._toggle_mute()
+        assert dialog._is_muted()
+        dialog._toggle_mute()
+        assert not dialog._is_muted()
+    finally:
+        dialog.accept()
+
+
+def test_the_transport_matches_the_verify_screen(qt_app):
+    """One stylesheet, so the two players do not drift apart."""
+    import inspect
+
+    from vcut.gui import clip_player_dialog, player_bar
+
+    assert "transport_stylesheet" in inspect.getsource(clip_player_dialog)
+    assert "transport_stylesheet" in inspect.getsource(player_bar.PlayerBar.restyle)

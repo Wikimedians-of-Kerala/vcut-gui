@@ -359,6 +359,66 @@ _FALLBACK_GLYPHS = {
 }
 
 
+def transport_stylesheet() -> str:
+    """The look of a transport bar: panel, timecodes and scrubber.
+
+    Shared so the clip player's transport matches the verify screen's
+    without copying the colours, which follow the theme.
+    """
+    dark = is_dark_theme()
+    if dark:
+        panel, groove = "#232a35", "#3a434f"
+        filled, handle = "#5a9fe8", "#ffffff"
+        text, field = "#c7cedb", "#161a21"
+    else:
+        panel, groove = "#e4e7ec", "#c2c8d0"
+        filled, handle = "#2a6fc9", "#ffffff"
+        text, field = "#424953", "#ffffff"
+
+    return f"""
+        QFrame#playerBar {{
+            background: {panel};
+            border-radius: 14px;
+        }}
+        QLabel#playerTime {{
+            color: {text};
+            font-family: monospace;
+            font-size: 11px;
+        }}
+        QSlider#playerScrubber::groove:horizontal {{
+            height: 6px;
+            border-radius: 3px;
+            background: {groove};
+        }}
+        QSlider#playerScrubber::sub-page:horizontal {{
+            height: 6px;
+            border-radius: 3px;
+            background: {filled};
+        }}
+        QSlider#playerScrubber::handle:horizontal {{
+            width: 18px;
+            height: 18px;
+            margin: -6px 0;
+            border-radius: 9px;
+            background: {handle};
+            border: 2px solid {filled};
+        }}
+        QSlider#playerScrubber::handle:horizontal:hover {{
+            background: {filled};
+        }}
+        QLineEdit#playerJump {{
+            background: {field};
+            color: {text};
+            border: 1px solid {groove};
+            border-radius: 5px;
+            padding: 3px;
+            font-family: monospace;
+            font-size: 11px;
+        }}
+        QLineEdit#playerJump:focus {{ border: 1px solid {filled}; }}
+    """
+
+
 class PlayerBar(QFrame):
     """Scrubber plus transport controls, as one rounded panel."""
 
@@ -558,59 +618,7 @@ class PlayerBar(QFrame):
         vanish on some backgrounds and in screenshots.
         """
         dark = is_dark_theme()
-        if dark:
-            panel, groove = "#232a35", "#3a434f"
-            filled, handle = "#5a9fe8", "#ffffff"
-            text, field = "#c7cedb", "#161a21"
-        else:
-            panel, groove = "#e4e7ec", "#c2c8d0"
-            filled, handle = "#2a6fc9", "#ffffff"
-            text, field = "#424953", "#ffffff"
-
-        self.setStyleSheet(
-            f"""
-            QFrame#playerBar {{
-                background: {panel};
-                border-radius: 14px;
-            }}
-            QLabel#playerTime {{
-                color: {text};
-                font-family: monospace;
-                font-size: 11px;
-            }}
-            QSlider#playerScrubber::groove:horizontal {{
-                height: 6px;
-                border-radius: 3px;
-                background: {groove};
-            }}
-            QSlider#playerScrubber::sub-page:horizontal {{
-                height: 6px;
-                border-radius: 3px;
-                background: {filled};
-            }}
-            QSlider#playerScrubber::handle:horizontal {{
-                width: 18px;
-                height: 18px;
-                margin: -6px 0;
-                border-radius: 9px;
-                background: {handle};
-                border: 2px solid {filled};
-            }}
-            QSlider#playerScrubber::handle:horizontal:hover {{
-                background: {filled};
-            }}
-            QLineEdit#playerJump {{
-                background: {field};
-                color: {text};
-                border: 1px solid {groove};
-                border-radius: 5px;
-                padding: 3px;
-                font-family: monospace;
-                font-size: 11px;
-            }}
-            QLineEdit#playerJump:focus {{ border: 1px solid {filled}; }}
-            """
-        )
+        self.setStyleSheet(transport_stylesheet())
         # Orange against the blue groove, so the clip's extent is unmistakable;
         # the other clips sit behind it in a darker blue.
         icons.restyle_widget(self)

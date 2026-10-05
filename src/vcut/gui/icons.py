@@ -33,6 +33,8 @@ ICON_NAMES: dict[str, str] = {
     "preview": "mdi6.movie-play-outline",
     "mark-in": "mdi6.contain-start",
     "mark-out": "mdi6.contain-end",
+    "volume": "mdi6.volume-high",
+    "volume-off": "mdi6.volume-off",
     # Editing the clip list
     "add": "mdi6.plus",
     "remove": "mdi6.delete-outline",

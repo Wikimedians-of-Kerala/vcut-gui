@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -31,7 +32,7 @@ from PySide6.QtWidgets import (
 
 from ..ffmpeg import probe
 from ..models import format_timecode
-from . import icons
+from .player_bar import RoundButton, transport_stylesheet
 from .theme import SPACE_EDGE, SPACE_ROW, SPACE_TIGHT
 from .widgets import StatusLabel, human_size
 
@@ -136,27 +137,94 @@ class ClipPlayerDialog(QDialog):
         self.player.durationChanged.connect(self._duration_changed)
         self.player.errorOccurred.connect(self._failed)
 
-        transport = QHBoxLayout()
-        transport.setSpacing(SPACE_TIGHT)
+        # The transport, as one panel: the same round buttons and styled
+        # scrubber the verify screen uses, without its marking and zoom
+        # controls, which mean nothing when watching a finished clip.
+        bar = QFrame()
+        bar.setObjectName("playerBar")
+        bar.setAttribute(Qt.WA_StyledBackground, True)
+        bar_layout = QVBoxLayout(bar)
+        bar_layout.setContentsMargins(16, 12, 16, 12)
+        bar_layout.setSpacing(10)
 
-        self.play_button = QPushButton()
-        self.play_button.setAutoDefault(False)
-        icons.apply(self.play_button, "play")
-        self.play_button.setProperty("iconRole", "play")
-        self.play_button.clicked.connect(self._toggle)
-        transport.addWidget(self.play_button)
+        scrub_row = QHBoxLayout()
+        scrub_row.setSpacing(10)
 
         self.elapsed = QLabel("00:00:00")
-        transport.addWidget(self.elapsed)
+        self.elapsed.setObjectName("playerTime")
+        self.elapsed.setMinimumWidth(66)
+        scrub_row.addWidget(self.elapsed)
 
         self.scrubber = QSlider(Qt.Horizontal)
+        self.scrubber.setObjectName("playerScrubber")
         self.scrubber.setRange(0, 0)
         self.scrubber.sliderMoved.connect(self.player.setPosition)
-        transport.addWidget(self.scrubber, 1)
+        scrub_row.addWidget(self.scrubber, 1)
 
         self.total = QLabel("00:00:00")
-        transport.addWidget(self.total)
-        layout.addLayout(transport)
+        self.total.setObjectName("playerTime")
+        self.total.setMinimumWidth(66)
+        self.total.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        scrub_row.addWidget(self.total)
+        bar_layout.addLayout(scrub_row)
+
+        controls = QHBoxLayout()
+        controls.setSpacing(SPACE_TIGHT)
+        controls.addStretch(1)
+
+        self.start_button = RoundButton("go-start", "Back to the start")
+        self.start_button.clicked.connect(lambda: self.player.setPosition(0))
+        controls.addWidget(self.start_button)
+
+        self.back10_button = RoundButton("back10", "Back 10 seconds")
+        self.back10_button.clicked.connect(lambda: self._nudge(-10_000))
+        controls.addWidget(self.back10_button)
+
+        self.back1_button = RoundButton("back1", "Back 1 second")
+        self.back1_button.clicked.connect(lambda: self._nudge(-1000))
+        controls.addWidget(self.back1_button)
+
+        # Play is the one control that should be obvious at a glance.
+        self.play_button = RoundButton(
+            "play", "Play or pause", diameter=52, icon_size=30, primary=True
+        )
+        self.play_button.clicked.connect(self._toggle)
+        controls.addSpacing(8)
+        controls.addWidget(self.play_button)
+        controls.addSpacing(8)
+
+        self.forward1_button = RoundButton("forward1", "Forward 1 second")
+        self.forward1_button.clicked.connect(lambda: self._nudge(1000))
+        controls.addWidget(self.forward1_button)
+
+        self.forward10_button = RoundButton("forward10", "Forward 10 seconds")
+        self.forward10_button.clicked.connect(lambda: self._nudge(10_000))
+        controls.addWidget(self.forward10_button)
+
+        self.end_button = RoundButton("go-end", "Jump to the end")
+        self.end_button.clicked.connect(self._goto_end)
+        controls.addWidget(self.end_button)
+
+        controls.addStretch(1)
+
+        # Volume, at the right-hand end where a player usually keeps it.
+        self.mute_button = RoundButton("volume", "Mute or unmute", diameter=28,
+                                       icon_size=18)
+        self.mute_button.clicked.connect(self._toggle_mute)
+        controls.addWidget(self.mute_button)
+
+        self.volume = QSlider(Qt.Horizontal)
+        self.volume.setObjectName("playerScrubber")
+        self.volume.setRange(0, 100)
+        self.volume.setValue(100)
+        self.volume.setFixedWidth(90)
+        self.volume.setToolTip("Volume")
+        self.volume.valueChanged.connect(self._volume_changed)
+        controls.addWidget(self.volume)
+
+        bar_layout.addLayout(controls)
+        bar.setStyleSheet(transport_stylesheet())
+        layout.addWidget(bar)
 
         self.status = StatusLabel("")
         layout.addWidget(self.status)
@@ -265,9 +333,50 @@ class ClipPlayerDialog(QDialog):
 
     def _sync_button(self) -> None:
         playing = self.player.playbackState() == QMediaPlayer.PlayingState
-        role = "pause" if playing else "play"
-        icons.apply(self.play_button, role)
-        self.play_button.setProperty("iconRole", role)
+        self.play_button.set_role("pause" if playing else "play")
+
+    def _nudge(self, milliseconds: int) -> None:
+        """Step forward or back, without running off either end."""
+        target = self.player.position() + milliseconds
+        self.player.setPosition(max(0, min(target, self.player.duration())))
+
+    def _volume_changed(self, percent: int) -> None:
+        """Set the volume on whichever player is in use."""
+        setter = getattr(self.player, "set_volume", None)
+        if setter is not None:          # libmpv
+            setter(percent)
+        else:                            # Qt wants 0.0-1.0
+            self.audio.setVolume(percent / 100)
+        if percent and self._is_muted():
+            self._set_muted(False)
+        self._sync_mute_button()
+
+    def _toggle_mute(self) -> None:
+        self._set_muted(not self._is_muted())
+        self._sync_mute_button()
+
+    def _is_muted(self) -> bool:
+        getter = getattr(self.player, "is_muted", None)
+        return getter() if getter is not None else self.audio.isMuted()
+
+    def _set_muted(self, muted: bool) -> None:
+        setter = getattr(self.player, "set_muted", None)
+        if setter is not None:
+            setter(muted)
+        else:
+            self.audio.setMuted(muted)
+
+    def _sync_mute_button(self) -> None:
+        silent = self._is_muted() or not self.volume.value()
+        self.mute_button.set_role("volume-off" if silent else "volume")
+
+    def _goto_end(self) -> None:
+        """Jump to the last moment of the clip, not past it."""
+        duration = self.player.duration()
+        if duration:
+            # A hair short of the end: seeking exactly to it leaves some
+            # players with nothing to show.
+            self.player.setPosition(max(0, duration - 200))
 
     def _position_changed(self, ms: int) -> None:
         if not self.scrubber.isSliderDown():
