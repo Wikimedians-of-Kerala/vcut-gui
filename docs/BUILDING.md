@@ -100,6 +100,10 @@ there.
 
 ### Building a .deb and an .rpm
 
+**CI does this on every release**, in the same job that builds the tarball —
+there is nothing to do by hand and no external service involved. What
+follows is for building them locally.
+
 After `build-linux.sh`, and on a machine with `dpkg-deb` and `rpmbuild`:
 
 ```sh
@@ -264,10 +268,11 @@ workflow artifacts instead, which are easy to miss:
    **Tests** run.
 3. Scroll to the bottom — **Artifacts**.
 
-There you will find `vcut-gui-linux`, `vcut-gui-windows` and
-`vcut-gui-wheel`, each a zip around the package. GitHub always wraps
-artifacts in a zip, so the Linux one downloads as a zip containing the
-`.tar.gz`, and the Windows one a zip inside a zip.
+There you will find `vcut-gui-linux`, `vcut-gui-packages`,
+`vcut-gui-windows` and `vcut-gui-wheel`, each a zip around the package.
+GitHub always wraps artifacts in a zip, so the Linux one downloads as a zip
+containing the `.tar.gz`, and the Windows one a zip inside a zip.
+`vcut-gui-packages` holds the `.deb` and the `.rpm`.
 
 Artifacts expire after 90 days; releases do not.
 

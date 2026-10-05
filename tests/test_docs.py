@@ -167,3 +167,25 @@ def test_every_file_is_read_as_utf_8():
         "read_text() without encoding='utf-8' breaks on Windows: "
         + ", ".join(offenders)
     )
+
+
+def test_the_build_guide_lists_every_artifact_ci_produces():
+    """A reader looking for a download must find all of them named.
+
+    The list named three while the workflow uploaded four, so the .deb and
+    .rpm existed but nothing told anyone where to look.
+    """
+    import yaml
+
+    workflow = yaml.safe_load(read(".github/workflows/release.yml"))
+    uploaded = {
+        step["with"]["name"]
+        for job in workflow["jobs"].values()
+        for step in job.get("steps", [])
+        if "upload-artifact" in str(step.get("uses", ""))
+    }
+    assert uploaded, "no artifacts are uploaded at all"
+
+    building = read("docs/BUILDING.md")
+    missing = sorted(name for name in uploaded if name not in building)
+    assert not missing, f"BUILDING.md never mentions: {missing}"
