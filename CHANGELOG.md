@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.7.0 — 2026-10-05
+
+**AV1 video now plays inside the program.** 1.6.0 could only hand an AV1
+clip to the desktop's own player, because nothing in the app could decode
+one. That is fixed: the picture appears in the window, on Wayland as well
+as X11 and Windows.
+
+### New
+
+- **The verify screen shows AV1 recordings.** The screen whose whole job is
+  finding cut points by eye can now see the format this program recommends
+  for Commons. Measured on a 2560×1440 AV1 recording: 764 frames in 25 s
+  against a 30 fps source, and frame-exact seeks in 34–43 ms on a
+  64-minute file.
+
+- **The clip player plays AV1 clips too**, instead of refusing them and
+  offering the system player. Moving between clips with the chooser keeps
+  the window open.
+
+- **The clip player has a real transport**: play, a second or ten either
+  way, jump to the start or end, and volume with mute. It uses the same
+  controls and styling as the verify screen.
+
+### Changed
+
+- **Wayland sessions are no longer forced onto XWayland.** 1.6.0 embedded
+  video by handing libmpv a native window id, which is an X11 mechanism
+  with no Wayland equivalent, so the whole program was pushed through a
+  compatibility layer to solve a problem in one pane. Video is now drawn
+  through the GL context of the widget it sits in, which needs no such
+  thing.
+
+- **A missing dependency is reported in full.** Previously only the first
+  missing piece was named, so someone without both libmpv and PyOpenGL
+  would install one, restart, and still find a black picture.
+
+### Requirements
+
+- **PyOpenGL** is a new dependency. It is pure Python, and supplies the one
+  function libmpv's renderer needs: the address of a GL symbol.
+
+- **libmpv** is needed to show video. On Debian or Ubuntu:
+  `sudo apt install libmpv2`. The Windows package now carries its own copy,
+  which earlier builds did not — so AV1 playback had never worked there.
+  Without libmpv the program falls back to Qt's player, which shows
+  everything except AV1.
+
 ## 1.6.0 — 2026-10-05
 
 **AV1 clips can be watched again.** The format this program recommends for
