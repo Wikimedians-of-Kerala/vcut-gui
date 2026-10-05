@@ -43,6 +43,7 @@ ICON_NAMES: dict[str, str] = {
     "save": "mdi6.content-save-outline",
     # Files and jobs
     "folder": "mdi6.folder-open-outline",
+    "licence": "mdi6.license",
     "video": "mdi6.video-outline",
     "csv": "mdi6.file-delimited-outline",
     "cut": "mdi6.content-cut",

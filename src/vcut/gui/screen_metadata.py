@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtGui import QBrush, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
+    QDateEdit,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -33,7 +34,7 @@ from ..models import format_timecode
 from ..naming import output_path, unique_path
 from . import icons
 from .progress_dialog import ConfirmJobDialog, JobProgressDialog, JobSummary
-from .theme import SPACE_EDGE, SPACE_ROW, SPACE_TIGHT
+from .theme import SPACE_EDGE, SPACE_GROUP, SPACE_ROW, SPACE_TIGHT
 from .state import AppState
 from .table_support import configure_table
 from .widgets import StatusLabel, human_size, row_colour, space_form
@@ -82,10 +83,54 @@ class MetadataScreen(QWidget):
         space_form(form)
         form.setLabelAlignment(Qt.AlignRight)
 
+        # Licence and date share a row: the date is usually empty, and a
+        # whole row for one short field wasted the space this panel has.
+        licence_row = QHBoxLayout()
+        licence_row.setSpacing(SPACE_TIGHT)
+
         self.license_field = QLineEdit(self.state.settings.commons_license)
         self.license_field.setPlaceholderText("{{Cc-by-sa-4.0}}")
         self.license_field.editingFinished.connect(self.refresh)
-        form.addRow("Licence", self.license_field)
+        licence_row.addWidget(self.license_field, 1)
+
+        choose = QPushButton("Choose…")
+        choose.setAutoDefault(False)
+        choose.setToolTip(
+            "Pick from the licences Commons accepts, rather than typing a "
+            "template from memory."
+        )
+        icons.apply(choose, "licence")
+        choose.setProperty("iconRole", "licence")
+        choose.clicked.connect(self._choose_licence)
+        licence_row.addWidget(choose)
+
+        licence_row.addSpacing(SPACE_GROUP)
+        licence_row.addWidget(QLabel("Date"))
+
+        # A date is a date: typing one invites the wrong format, and Commons
+        # wants ISO. The checkbox is what makes it optional, since the usual
+        # answer is "take it from the schedule".
+        self.date_override_box = QCheckBox("Override")
+        self.date_override_box.setToolTip(
+            "Off: each clip uses its own date from the conference schedule.\n"
+            "On: every clip gets the date chosen here."
+        )
+        self.date_override_box.setChecked(bool(self.state.settings.date_override))
+        self.date_override_box.toggled.connect(self._date_override_toggled)
+        licence_row.addWidget(self.date_override_box)
+
+        self.date_field = QDateEdit()
+        self.date_field.setCalendarPopup(True)
+        self.date_field.setDisplayFormat("yyyy-MM-dd")
+        stored = QDate.fromString(
+            self.state.settings.date_override or "", "yyyy-MM-dd"
+        )
+        self.date_field.setDate(stored if stored.isValid() else QDate.currentDate())
+        self.date_field.setEnabled(bool(self.state.settings.date_override))
+        self.date_field.dateChanged.connect(self._date_changed)
+        licence_row.addWidget(self.date_field)
+
+        form.addRow("Licence", licence_row)
 
         self.categories_field = QLineEdit(
             "; ".join(self.state.settings.commons_categories)
@@ -95,13 +140,6 @@ class MetadataScreen(QWidget):
         )
         self.categories_field.editingFinished.connect(self.refresh)
         form.addRow("Categories", self.categories_field)
-
-        self.date_field = QLineEdit(self.state.settings.date_override)
-        self.date_field.setPlaceholderText(
-            "leave empty to use each session's date from the schedule"
-        )
-        self.date_field.editingFinished.connect(self.refresh)
-        form.addRow("Date override", self.date_field)
 
         # How the Commons name is built. Both are matters of house style, so
         # they sit with the other per-event details rather than in settings.
@@ -141,6 +179,35 @@ class MetadataScreen(QWidget):
 
         form.addRow("File naming", naming)
         return group
+
+    def _choose_licence(self) -> None:
+        from .licence_dialog import LicenceDialog
+
+        dialog = LicenceDialog(self.license_field.text().strip(), self)
+        if dialog.exec() == LicenceDialog.Accepted and dialog.chosen():
+            self.license_field.setText(dialog.chosen())
+            self.refresh()
+
+    def _date_override_toggled(self, on: bool) -> None:
+        """Turn the date override on or off.
+
+        Off means each clip keeps its own date from the schedule, which is
+        what a conference day usually wants.
+        """
+        self.date_field.setEnabled(on)
+        # `on` is passed rather than read back from the checkbox: the signal
+        # can arrive before the widget's own state has settled.
+        self._store_date(on)
+
+    def _date_changed(self) -> None:
+        self._store_date(self.date_override_box.isChecked())
+
+    def _store_date(self, overriding: bool) -> None:
+        self.state.settings.date_override = (
+            self.date_field.date().toString("yyyy-MM-dd") if overriding else ""
+        )
+        self.state.save_settings()
+        self.refresh()
 
     def _naming_changed(self) -> None:
         """Rebuild every generated name after a naming option changes.
@@ -309,7 +376,12 @@ class MetadataScreen(QWidget):
         settings.commons_categories = [
             part.strip() for part in self.categories_field.text().split(";") if part.strip()
         ]
-        settings.date_override = self.date_field.text().strip()
+        # QDateEdit always shows a date, so the checkbox is what decides
+        # whether there is an override at all.
+        settings.date_override = (
+            self.date_field.date().toString("yyyy-MM-dd")
+            if self.date_override_box.isChecked() else ""
+        )
         return self.state.commons_settings()
 
     def refresh(self) -> None:
