@@ -68,27 +68,35 @@ def available() -> bool:
 def unavailable_reason() -> str:
     """Why libmpv cannot be used, for telling the user something useful."""
     _add_bundled_library_to_path()
-    try:
-        from OpenGL import GL  # noqa: F401
-    except ImportError:
-        return (
-            "The PyOpenGL package is not installed. Install it with "
-            "'pip install PyOpenGL' to play AV1 video."
-        )
+
+    # Everything that is missing, not merely the first thing: installing one
+    # and finding the picture still black is a poor way to learn there were
+    # two.
+    missing = []
     try:
         import mpv  # noqa: F401
     except ImportError:
-        return (
+        missing.append(
             "The python-mpv package is not installed. Install it with "
-            "'pip install python-mpv' to play AV1 video."
+            "'pip install python-mpv'."
         )
     except OSError:
-        return (
+        missing.append(
             "libmpv is not installed. On Debian or Ubuntu: "
             "'sudo apt install libmpv2'. On Windows, put mpv-2.dll beside "
             "the program."
         )
-    return ""
+    try:
+        from OpenGL import GL  # noqa: F401
+    except ImportError:
+        missing.append(
+            "The PyOpenGL package is not installed. Install it with "
+            "'pip install PyOpenGL'."
+        )
+
+    if not missing:
+        return ""
+    return " ".join(missing) + " Until then, AV1 video cannot be shown."
 
 
 def _get_proc_address(_ctx, name):

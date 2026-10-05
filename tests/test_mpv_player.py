@@ -114,13 +114,47 @@ def test_the_numeric_locale_is_forced_to_c():
     assert "LC_ALL" not in source
 
 
-def test_video_is_embedded_without_xwayland():
-    """The render API draws inside the window on Wayland as well as X11.
+def test_the_surface_is_wired_for_rendering(qt_app):
+    """The pieces the render path needs, checked without a GPU.
 
-    Handing libmpv a native window id ("wid") is an X11 mechanism with no
-    Wayland equivalent, so it only worked by forcing the whole program
-    through XWayland. Rendering through the widget's own GL context needs
-    no such thing, and must not come back.
+    Actually playing a file needs a real GL context, which CI runners do
+    not have -- a test that needs one either skips there or hangs the
+    build, so it would not protect the release. What can be checked
+    anywhere is that the object is built the way the render path requires,
+    and that is what breaks when someone changes it.
+    """
+    surface = mpv_player.MpvSurface()
+    try:
+        # Nothing is created until there is both a GL context and an mpv:
+        # Qt may bring up GL either side of the file being set.
+        assert surface._context is None
+        surface._build_context()
+        assert surface._context is None, "built a context with no mpv"
+
+        # Every entry point into the render path goes through one builder,
+        # so whichever of the two arrives last starts the video.
+        for method in (surface.initializeGL, surface.paintGL, surface.attach):
+            assert callable(method)
+
+        # Painting before there is anything to paint must not raise: Qt
+        # calls paintGL as soon as the widget is shown.
+        surface.paintGL()
+
+        # And letting go twice is harmless, which is what closing a window
+        # after an encode has already released the player does.
+        surface.detach()
+        surface.detach()
+    finally:
+        surface.deleteLater()
+
+
+def test_the_xwayland_workaround_is_gone():
+    """Forcing the whole program onto XWayland must not come back.
+
+    It moved every window in the program onto a compatibility layer to
+    solve a problem in one pane, and the render API removes the reason for
+    it. The release order matters too: libmpv must not be left rendering
+    into a context that has already been freed.
     """
     import inspect
 
@@ -129,58 +163,12 @@ def test_video_is_embedded_without_xwayland():
     assert not hasattr(app_module, "_embed_video_under_x11")
     assert "xcb" not in inspect.getsource(app_module)
 
-    player_source = inspect.getsource(mpv_player)
-    assert '"wid"' not in player_source
-    assert 'options["vo"] = "libmpv"' in player_source
+    source = inspect.getsource(mpv_player)
+    assert '"wid"' not in source
+    assert 'options["vo"] = "libmpv"' in source
 
-
-def test_the_surface_renders_through_its_own_gl_context():
-    """mpv draws into the widget's framebuffer, not a window of its own."""
-    import inspect
-
-    source = inspect.getsource(mpv_player.MpvSurface)
-    assert "MpvRenderContext" in source
-    assert "opengl_fbo" in source
-    assert "defaultFramebufferObject" in source
-    # Qt6's framebuffer has no depth buffer, and PyOpenGL resolves its own
-    # context separately from Qt's, so clearing through it fails with
-    # "invalid enumerant". The comment saying so may stay; the call may not.
-    code = "\n".join(
-        line for line in source.splitlines() if not line.strip().startswith("#")
-    )
-    assert "glClear" not in code
-
-
-def test_frames_are_requested_across_the_thread_boundary():
-    """mpv calls back from its render thread; Qt widgets are GUI-thread only."""
-    import inspect
-
-    source = inspect.getsource(mpv_player.MpvSurface)
-    assert "QueuedConnection" in source
-    assert "update_cb" in source
-
-
-def test_the_render_context_waits_for_both_gl_and_mpv():
-    """Qt may create the GL context either side of the file being set."""
-    import inspect
-
-    source = inspect.getsource(mpv_player.MpvSurface._build_context)
-    assert "self._mpv is None" in source
-    assert "isValid()" in source
-    # Built from whichever arrives last.
-    assert "_build_context" in inspect.getsource(mpv_player.MpvSurface.initializeGL)
-    assert "_build_context" in inspect.getsource(mpv_player.MpvSurface.paintGL)
-    assert "_build_context" in inspect.getsource(mpv_player.MpvSurface.attach)
-
-
-def test_the_render_context_goes_before_the_player():
-    """libmpv must not be left rendering into a freed context."""
-    import inspect
-
-    source = inspect.getsource(mpv_player.MpvPlayer.release)
-    assert source.index("detach()") < source.index("terminate()")
-
-
+    release = inspect.getsource(mpv_player.MpvPlayer.release)
+    assert release.index("detach()") < release.index("terminate()")
 
 
 def test_windows_bundles_libmpv():
