@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..ffmpeg import probe
 from ..models import format_timecode
 from . import icons
 from .theme import SPACE_EDGE, SPACE_ROW, SPACE_TIGHT
@@ -125,6 +126,14 @@ class ClipPlayerDialog(QDialog):
         self.status = StatusLabel("")
         layout.addWidget(self.status)
 
+        # Shown only when the built-in player cannot manage the codec: the
+        # desktop's own player almost certainly can.
+        self.open_externally = QPushButton("Open in the system player")
+        self.open_externally.setAutoDefault(False)
+        self.open_externally.setVisible(False)
+        self.open_externally.clicked.connect(self._open_externally)
+        layout.addWidget(self.open_externally)
+
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
         buttons.rejected.connect(self.accept)
         buttons.button(QDialogButtonBox.Close).clicked.connect(self.accept)
@@ -147,9 +156,27 @@ class ClipPlayerDialog(QDialog):
         self._release()
         self._path = Path(path)
         self.setWindowTitle(f"Playing — {self._path.name}")
+        self.play_button.setEnabled(True)
+        self.open_externally.setVisible(False)
         self._open()
 
     # -- playback ----------------------------------------------------------
+
+    #: Codecs the bundled Qt cannot decode, and what to say about each.
+    #:
+    #: Qt Multimedia carries its own FFmpeg, and that build ships no AV1
+    #: decoder -- no libdav1d, no libaom -- while the system FFmpeg this
+    #: program cuts and converts with has three. So an AV1 clip encodes
+    #: perfectly and then plays as a black rectangle, with the player
+    #: reporting no error at all. Measured: the same three seconds of video
+    #: delivered 0 frames as AV1 and 87 as VP9 or H.264.
+    UNPLAYABLE = {
+        "av1": (
+            "This clip is AV1, which the built-in player cannot decode — "
+            "Qt ships no AV1 decoder. The file itself is fine: it plays in "
+            "VLC or a browser, and uploads to Commons normally."
+        ),
+    }
 
     def _open(self) -> None:
         if not self._path.is_file():
@@ -161,10 +188,28 @@ class ClipPlayerDialog(QDialog):
             return
 
         size = human_size(self._path.stat().st_size)
+
+        # Checked before playing, because the failure is silent: no error,
+        # no frames, just black. Better to say why than to show nothing.
+        warning = self._unplayable_reason()
+        if warning:
+            self.status.show_message(warning, "warn")
+            self.play_button.setEnabled(False)
+            self.open_externally.setVisible(True)
+            return
+
         self.status.show_message(f"{self._path.name} · {size}", "muted")
         self.player.setSource(QUrl.fromLocalFile(str(self._path)))
         self.player.play()
         self._sync_button()
+
+    def _unplayable_reason(self) -> str:
+        """Why this file will not play here, or an empty string."""
+        try:
+            info = probe(self._path)
+        except Exception:  # noqa: BLE001 - a probe failure is not fatal
+            return ""
+        return self.UNPLAYABLE.get((info.video_codec or "").lower(), "")
 
     def _toggle(self) -> None:
         if self.player.playbackState() == QMediaPlayer.PlayingState:
@@ -192,6 +237,11 @@ class ClipPlayerDialog(QDialog):
         self.status.show_message(
             message or "This file could not be played.", "error"
         )
+
+    def _open_externally(self) -> None:
+        from PySide6.QtGui import QDesktopServices
+
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._path)))
 
     # -- closing -----------------------------------------------------------
 

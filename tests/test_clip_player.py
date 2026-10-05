@@ -153,21 +153,52 @@ def test_without_a_list_there_is_no_chooser(qt_app, tmp_path):
     assert dialog.chooser is None
 
 
-def test_video_is_decoded_in_software():
-    """Qt reaches for VAAPI and does not fall back when it fails.
+def test_an_av1_clip_says_why_it_will_not_play(qt_app, tmp_path):
+    """Qt ships no AV1 decoder, and fails silently when asked for one.
 
-    A GPU without AV1 decoding -- which is most of them -- gives a black
-    window and "No support for codec av1 profile 0". AV1 is the format this
-    program recommends for Commons, so its own output is what fails.
+    Measured on the same three seconds of video: 0 frames delivered as AV1,
+    87 as VP9 or H.264, with the player reporting PlayingState and NoError
+    throughout. Without this check the window is simply black.
+
+    AV1 is what this program recommends for Commons, so its own output is
+    exactly what cannot be previewed.
     """
-    import inspect
-    import os
+    import subprocess
 
-    from vcut.gui.app import _decode_in_software, main
+    from vcut.gui.clip_player_dialog import ClipPlayerDialog
 
-    _decode_in_software()
-    assert os.environ.get("QT_FFMPEG_DECODING_HW_DEVICE_TYPES") == ""
+    clip = tmp_path / "clip.webm"
+    made = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+         "-i", "testsrc2=size=160x90:rate=10:duration=1",
+         "-c:v", "libsvtav1", "-crf", "60", "-y", str(clip)],
+        capture_output=True,
+    )
+    if made.returncode != 0 or not clip.is_file():
+        pytest.skip("this ffmpeg cannot encode AV1")
 
-    # It has to run before QApplication: Qt reads the variable at startup.
-    body = inspect.getsource(main)
-    assert body.index("_decode_in_software()") < body.index("QApplication(argv)")
+    dialog = ClipPlayerDialog(str(clip), "An AV1 clip")
+    assert "AV1" in dialog.status.text()
+    assert not dialog.play_button.isEnabled()
+    # The file is fine; it is the built-in player that cannot manage it.
+    assert "uploads to Commons normally" in dialog.status.text()
+
+
+def test_a_playable_codec_is_not_blocked(qt_app, tmp_path):
+    import subprocess
+
+    from vcut.gui.clip_player_dialog import ClipPlayerDialog
+
+    clip = tmp_path / "clip.mp4"
+    made = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+         "-i", "testsrc2=size=160x90:rate=10:duration=1",
+         "-c:v", "libx264", "-crf", "40", "-y", str(clip)],
+        capture_output=True,
+    )
+    if made.returncode != 0 or not clip.is_file():
+        pytest.skip("this ffmpeg cannot encode H.264")
+
+    dialog = ClipPlayerDialog(str(clip), "An H.264 clip")
+    assert dialog.play_button.isEnabled()
+    assert "cannot decode" not in dialog.status.text()
