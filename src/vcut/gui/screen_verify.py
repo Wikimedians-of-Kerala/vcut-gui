@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 
 from ..models import Clip, ClipStatus, TimecodeError, format_timecode, parse_timecode
 from ..naming import output_path, unique_path
-from . import icons
+from . import icons, mpv_player
 from .player_bar import PlayerBar
 from .progress_dialog import ConfirmJobDialog, JobProgressDialog, JobSummary
 from .theme import SPACE_EDGE, SPACE_ROW
@@ -116,13 +116,32 @@ class VerifyScreen(QWidget):
         self.video_placeholder.setMinimumSize(320, 180)
         self.video_placeholder.setWordWrap(True)
 
+        # libmpv renders into a native window of its own, so it needs a
+        # plain widget rather than a QVideoWidget.
+        self.mpv_surface = QWidget()
+        self.mpv_surface.setMinimumSize(320, 180)
+        self.mpv_surface.setStyleSheet("background: #000;")
+        self.mpv_surface.setAttribute(Qt.WA_NativeWindow, True)
+        self.mpv_surface.setAttribute(Qt.WA_DontCreateNativeAncestors, True)
+
         self.video_stack = QStackedWidget()
         self.video_stack.addWidget(self.video)
         self.video_stack.addWidget(self.video_placeholder)
-        self.player = QMediaPlayer(self)
+        self.video_stack.addWidget(self.mpv_surface)
+
+        # libmpv when it is there, Qt otherwise. Qt's bundled FFmpeg has no
+        # AV1 decoder, so an AV1 recording shows nothing here -- and this is
+        # the screen where the picture is the entire point. libmpv uses the
+        # system FFmpeg, which does decode AV1.
         self.audio = QAudioOutput(self)
+        if mpv_player.available():
+            self.player = mpv_player.MpvPlayer(self)
+            self.player.set_surface(int(self.mpv_surface.winId()))
+            self.video_stack.setCurrentWidget(self.mpv_surface)
+        else:
+            self.player = QMediaPlayer(self)
+            self.player.setVideoOutput(self.video)
         self.player.setAudioOutput(self.audio)
-        self.player.setVideoOutput(self.video)
         self.player.positionChanged.connect(self._position_changed)
         self.player.durationChanged.connect(self._duration_changed)
         self.player.errorOccurred.connect(self._player_error)
@@ -164,13 +183,20 @@ class VerifyScreen(QWidget):
         except RuntimeError:  # the widget may already be gone
             pass
 
+    def _video_surface(self) -> QWidget:
+        """Whichever widget the current player draws into."""
+        return (
+            self.mpv_surface if isinstance(self.player, mpv_player.MpvPlayer)
+            else self.video
+        )
+
     def restore_player(self) -> None:
         """Reopen the source after an encode, back where it was."""
         path = self.state.source_path
         if not path:
             return
         try:
-            self.video_stack.setCurrentWidget(self.video)
+            self.video_stack.setCurrentWidget(self._video_surface())
             self.player.setSource(QUrl.fromLocalFile(path))
             if getattr(self, "_resume_position", 0):
                 self.player.setPosition(self._resume_position)
@@ -873,6 +899,10 @@ class VerifyScreen(QWidget):
         ffmpeg's job and it decodes AV1 perfectly; only the picture here is
         missing, which is worth saying rather than leaving to guesswork.
         """
+        # Only Qt's player has this problem. With libmpv there is nothing
+        # to warn about, because it decodes AV1 perfectly well.
+        if isinstance(self.player, mpv_player.MpvPlayer):
+            return ""
         info = self.state.media_info
         codec = (getattr(info, "video_codec", "") or "").lower()
         return codec if codec in ("av1",) else ""
@@ -884,8 +914,7 @@ class VerifyScreen(QWidget):
             self.summary.show_message(
                 f"This video is {unplayable.upper()}, which the built-in "
                 f"player cannot show — the picture stays black. Cutting and "
-                f"converting are unaffected, and the clip preview on the "
-                f"next step plays {unplayable.upper()} correctly.",
+                f"converting are unaffected. {mpv_player.unavailable_reason()}",
                 "warn",
             )
             self.split_button.setEnabled(bool(self.state.clips))

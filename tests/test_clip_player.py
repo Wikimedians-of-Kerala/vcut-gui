@@ -189,10 +189,14 @@ def test_an_av1_clip_is_sent_to_the_system_player(qt_app, tmp_path):
     """
     from vcut.gui.clip_player_dialog import playable_here
 
+    from vcut.gui import mpv_player
+
     clip = tmp_path / "clip.webm"
     _make_clip(clip, "libsvtav1")
 
-    assert playable_here(clip) is False
+    # With libmpv the app plays AV1 itself; without it, the desktop's own
+    # player is the honest answer.
+    assert playable_here(clip) is mpv_player.available()
 
 
 def test_a_playable_codec_is_not_blocked(qt_app, tmp_path):
@@ -237,11 +241,18 @@ def test_the_verify_screen_warns_about_an_av1_source(qt_app, tmp_path):
     source = tmp_path / "source.webm"
     _make_clip(source, "libsvtav1")
 
+    from vcut.gui import mpv_player
+
     window = MainWindow()
     window.state.set_source(str(source), probe(source))
     text = window.verify_screen.summary.text()
 
-    assert "AV1" in text
-    assert "black" in text.lower()
-    # And it must say cutting still works.
-    assert "cutting" in text.lower()
+    if mpv_player.available():
+        # libmpv decodes AV1, so there is nothing to warn about.
+        assert "cannot show" not in text
+    else:
+        assert "AV1" in text
+        assert "black" in text.lower()
+        # And it must say cutting still works, and how to fix the picture.
+        assert "cutting" in text.lower()
+        assert "libmpv" in text.lower() or "python-mpv" in text.lower()

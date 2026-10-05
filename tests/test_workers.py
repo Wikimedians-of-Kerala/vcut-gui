@@ -146,14 +146,14 @@ def test_releasing_swaps_in_the_placeholder():
     screen = window.verify_screen
     window.state.set_source("day1.mp4", MediaInfo(duration=600.0))
 
-    assert screen.video_stack.currentWidget() is screen.video
+    assert screen.video_stack.currentWidget() is screen._video_surface()
 
     screen.release_player()
     assert screen.video_stack.currentWidget() is screen.video_placeholder
     assert screen.player.source() == QUrl(), "the file was not let go"
 
     screen.restore_player()
-    assert screen.video_stack.currentWidget() is screen.video
+    assert screen.video_stack.currentWidget() is screen._video_surface()
 
 
 def test_the_placeholder_says_why_it_is_there():
@@ -198,7 +198,7 @@ def test_the_player_comes_back_when_encoding_ends():
         assert screen.video_stack.currentWidget() is screen.video_placeholder
 
     app.processEvents()
-    assert screen.video_stack.currentWidget() is screen.video
+    assert screen.video_stack.currentWidget() is screen._video_surface()
 
 
 def test_the_hooks_cross_threads_safely():

@@ -31,6 +31,11 @@ dependencies = [
     "jinja2>=3.1",
     "keyring>=25.7.0",
     "qtawesome>=1.3",
+    # Qt Multimedia's bundled FFmpeg has no AV1 decoder, so an AV1 recording
+    # shows nothing on the screen whose job is finding cut points by eye.
+    # libmpv uses the system FFmpeg, which does. The binding is pure Python;
+    # libmpv itself is a system library, like ffmpeg.
+    "python-mpv>=1.0",
 ]
 
 [project.urls]

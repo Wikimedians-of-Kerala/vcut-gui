@@ -47,6 +47,11 @@ def playable_here(path: str | Path) -> bool:
     False means the desktop's own player should be used instead: a window
     that paints black and offers a button is a step nobody needs.
     """
+    from . import mpv_player
+
+    # libmpv decodes everything the system ffmpeg does, AV1 included.
+    if mpv_player.available():
+        return True
     try:
         codec = (probe(path).video_codec or "").lower()
     except Exception:  # noqa: BLE001 - assume playable and let it try
