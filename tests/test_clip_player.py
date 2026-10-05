@@ -12,6 +12,30 @@ def qt_app():
     yield QApplication.instance() or QApplication([])
 
 
+def _make_clip(path, codec: str) -> None:
+    """Encode a one-second clip, or skip when ffmpeg is not installed.
+
+    Checked before calling rather than after: a missing ffmpeg raises
+    FileNotFoundError from subprocess, which is a test error rather than
+    the skip it should be. CI runners have no ffmpeg -- the suite is meant
+    to run offline, with no external tools.
+    """
+    import shutil
+    import subprocess
+
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("ffmpeg is not installed")
+
+    made = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+         "-i", "testsrc2=size=160x90:rate=10:duration=1",
+         "-c:v", codec, "-crf", "50", "-y", str(path)],
+        capture_output=True,
+    )
+    if made.returncode != 0 or not path.is_file():
+        pytest.skip(f"this ffmpeg cannot encode with {codec}")
+
+
 def test_the_metadata_screen_offers_to_play_a_clip(qt_app):
     """The verify screen plays the whole recording; this plays one clip."""
     from vcut.gui.main_window import MainWindow
@@ -163,37 +187,19 @@ def test_an_av1_clip_is_sent_to_the_system_player(qt_app, tmp_path):
     Decoding it in-process was tried and abandoned: seeking and audio were
     both poor enough that the desktop's own player is the better answer.
     """
-    import subprocess
-
     from vcut.gui.clip_player_dialog import playable_here
 
     clip = tmp_path / "clip.webm"
-    made = subprocess.run(
-        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
-         "-i", "testsrc2=size=160x90:rate=10:duration=1",
-         "-c:v", "libsvtav1", "-crf", "60", "-y", str(clip)],
-        capture_output=True,
-    )
-    if made.returncode != 0 or not clip.is_file():
-        pytest.skip("this ffmpeg cannot encode AV1")
+    _make_clip(clip, "libsvtav1")
 
     assert playable_here(clip) is False
 
 
 def test_a_playable_codec_is_not_blocked(qt_app, tmp_path):
-    import subprocess
-
     from vcut.gui.clip_player_dialog import ClipPlayerDialog
 
     clip = tmp_path / "clip.mp4"
-    made = subprocess.run(
-        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
-         "-i", "testsrc2=size=160x90:rate=10:duration=1",
-         "-c:v", "libx264", "-crf", "40", "-y", str(clip)],
-        capture_output=True,
-    )
-    if made.returncode != 0 or not clip.is_file():
-        pytest.skip("this ffmpeg cannot encode H.264")
+    _make_clip(clip, "libx264")
 
     dialog = ClipPlayerDialog(str(clip), "An H.264 clip")
     assert dialog.play_button.isEnabled()
@@ -204,19 +210,10 @@ def test_a_playable_codec_is_not_blocked(qt_app, tmp_path):
 
 
 def test_an_ordinary_codec_always_plays_in_the_window(qt_app, tmp_path):
-    import subprocess
-
     from vcut.gui.clip_player_dialog import playable_here
 
     clip = tmp_path / "clip.mp4"
-    made = subprocess.run(
-        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
-         "-i", "testsrc2=size=160x90:rate=10:duration=1",
-         "-c:v", "libx264", "-crf", "40", "-y", str(clip)],
-        capture_output=True,
-    )
-    if made.returncode != 0 or not clip.is_file():
-        pytest.skip("this ffmpeg cannot encode H.264")
+    _make_clip(clip, "libx264")
 
     assert playable_here(clip) is True
 
@@ -234,20 +231,11 @@ def test_the_verify_screen_warns_about_an_av1_source(qt_app, tmp_path):
     Cutting is unaffected -- that is the system ffmpeg's job -- so the
     message says what still works rather than only what does not.
     """
-    import subprocess
-
     from vcut.ffmpeg import probe
     from vcut.gui.main_window import MainWindow
 
     source = tmp_path / "source.webm"
-    made = subprocess.run(
-        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
-         "-i", "testsrc2=size=160x90:rate=10:duration=1",
-         "-c:v", "libsvtav1", "-crf", "60", "-y", str(source)],
-        capture_output=True,
-    )
-    if made.returncode != 0 or not source.is_file():
-        pytest.skip("this ffmpeg cannot encode AV1")
+    _make_clip(source, "libsvtav1")
 
     window = MainWindow()
     window.state.set_source(str(source), probe(source))
