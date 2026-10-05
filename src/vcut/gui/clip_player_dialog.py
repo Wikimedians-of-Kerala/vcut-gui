@@ -25,14 +25,12 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QSlider,
-    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from ..ffmpeg import probe
 from ..models import format_timecode
-from . import av_playback
 from . import icons
 from .theme import SPACE_EDGE, SPACE_ROW, SPACE_TIGHT
 from .widgets import StatusLabel, human_size
@@ -53,9 +51,7 @@ def playable_here(path: str | Path) -> bool:
         codec = (probe(path).video_codec or "").lower()
     except Exception:  # noqa: BLE001 - assume playable and let it try
         return True
-    if codec not in QT_CANNOT_DECODE:
-        return True
-    return av_playback.can_decode(codec)
+    return codec not in QT_CANNOT_DECODE
 
 
 class ClipPlayerDialog(QDialog):
@@ -66,7 +62,6 @@ class ClipPlayerDialog(QDialog):
                  clips: list | None = None, current: int = -1) -> None:
         super().__init__(parent)
         self._path = Path(path)
-        self._playback: av_playback.Playback | None = None
         self.setWindowTitle(f"Playing — {self._path.name}")
         self.resize(760, 560)
 
@@ -115,16 +110,7 @@ class ClipPlayerDialog(QDialog):
         self.video.setStyleSheet("background: #000;")
         self.video.setAspectRatioMode(Qt.KeepAspectRatio)
 
-        # Where PyAV-decoded frames are painted, for codecs Qt cannot manage.
-        self.frame_view = QLabel()
-        self.frame_view.setMinimumSize(480, 270)
-        self.frame_view.setAlignment(Qt.AlignCenter)
-        self.frame_view.setStyleSheet("background: #000;")
-
-        self.surface = QStackedWidget()
-        self.surface.addWidget(self.video)
-        self.surface.addWidget(self.frame_view)
-        layout.addWidget(self.surface, 1)
+        layout.addWidget(self.video, 1)
 
         self.player = QMediaPlayer(self)
         self.audio = QAudioOutput(self)
@@ -149,7 +135,7 @@ class ClipPlayerDialog(QDialog):
 
         self.scrubber = QSlider(Qt.Horizontal)
         self.scrubber.setRange(0, 0)
-        self.scrubber.sliderMoved.connect(self._seek)
+        self.scrubber.sliderMoved.connect(self.player.setPosition)
         transport.addWidget(self.scrubber, 1)
 
         self.total = QLabel("00:00:00")
@@ -203,7 +189,15 @@ class ClipPlayerDialog(QDialog):
     #: rectangle, with the player reporting no error. Measured on the same
     #: three seconds of video: 0 frames as AV1, 87 as VP9 or H.264.
     #:
-    #: These are decoded with PyAV instead, which does bundle libdav1d.
+    #: No setting fixes this. Qt reports AV1 as decodable -- its format
+    #: enum knows the codec exists -- and then delivers nothing, because
+    #: its bundled libavcodec has no AV1 decoder compiled in. Forcing
+    #: QT_MEDIA_BACKEND=ffmpeg, naming hardware device types, and trying a
+    #: 320x180 file all gave 0 frames; the same content as VP9 gave 11.
+    #:
+    #: Decoding it in-process with PyAV was tried and abandoned: seeking
+    #: and audio were both poor enough that handing the file to the
+    #: desktop's own player is the better answer.
     QT_CANNOT_DECODE = ("av1",)
 
     def _open(self) -> None:
@@ -219,13 +213,6 @@ class ClipPlayerDialog(QDialog):
         codec = self._codec()
 
         if codec in self.QT_CANNOT_DECODE:
-            if av_playback.can_decode(codec):
-                self.status.show_message(
-                    f"{self._path.name} · {size} · {codec.upper()}, decoded "
-                    f"in software", "muted",
-                )
-                self._play_with_pyav()
-                return
             self.status.show_message(
                 f"This clip is {codec.upper()}, which the built-in player "
                 f"cannot decode. The file itself is fine: it plays in VLC or "
@@ -236,7 +223,6 @@ class ClipPlayerDialog(QDialog):
             self.open_externally.setVisible(True)
             return
 
-        self.surface.setCurrentWidget(self.video)
         self.status.show_message(f"{self._path.name} · {size}", "muted")
         self.player.setSource(QUrl.fromLocalFile(str(self._path)))
         self.player.play()
@@ -248,52 +234,18 @@ class ClipPlayerDialog(QDialog):
         except Exception:  # noqa: BLE001 - a probe failure is not fatal
             return ""
 
-    def _play_with_pyav(self) -> None:
-        """Decode with PyAV and paint the frames ourselves."""
-        self.surface.setCurrentWidget(self.frame_view)
-        self._playback = av_playback.Playback(self._path, self)
-        self._playback.frame_ready.connect(self._show_frame)
-        self._playback.duration_known.connect(self._duration_changed)
-        self._playback.failed.connect(self._failed)
-        self._playback.finished.connect(self._sync_button)
-        self._playback.start()
-        self._sync_button()
-
-    def _show_frame(self, pixmap, position_ms: int) -> None:
-        self.frame_view.setPixmap(
-            pixmap.scaled(
-                self.frame_view.size(), Qt.KeepAspectRatio,
-                Qt.SmoothTransformation,
-            )
-        )
-        self._position_changed(position_ms)
-
     def _toggle(self) -> None:
-        if self._playback is not None:
-            if self._playback.is_paused():
-                self._playback.resume()
-            else:
-                self._playback.pause()
-        elif self.player.playbackState() == QMediaPlayer.PlayingState:
+        if self.player.playbackState() == QMediaPlayer.PlayingState:
             self.player.pause()
         else:
             self.player.play()
         self._sync_button()
 
     def _sync_button(self) -> None:
-        if self._playback is not None:
-            playing = not self._playback.is_paused()
-        else:
-            playing = self.player.playbackState() == QMediaPlayer.PlayingState
+        playing = self.player.playbackState() == QMediaPlayer.PlayingState
         role = "pause" if playing else "play"
         icons.apply(self.play_button, role)
         self.play_button.setProperty("iconRole", role)
-
-    def _seek(self, ms: int) -> None:
-        if self._playback is not None:
-            self._playback.seek(ms)
-        else:
-            self.player.setPosition(ms)
 
     def _position_changed(self, ms: int) -> None:
         if not self.scrubber.isSliderDown():
@@ -326,9 +278,6 @@ class ClipPlayerDialog(QDialog):
 
     def _release(self) -> None:
         """Let go of the file, so its decoder is not left holding memory."""
-        if self._playback is not None:
-            self._playback.stop()
-            self._playback = None
         try:
             self.player.stop()
             self.player.setSource(QUrl())

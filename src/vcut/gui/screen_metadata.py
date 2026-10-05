@@ -212,13 +212,27 @@ class MetadataScreen(QWidget):
         from .clip_player_dialog import ClipPlayerDialog, playable_here
 
         if not playable_here(path):
-            # Nothing here can decode it, so a window that shows black and
-            # offers a button is a step the user does not need: hand the
-            # file straight to whatever the desktop plays video with.
+            # Qt cannot decode this -- AV1, in practice, which is the format
+            # recommended for Commons. Hand it straight to whatever the
+            # desktop plays video with rather than opening a window that
+            # shows black and offers a button.
             from PySide6.QtGui import QDesktopServices
 
-            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
-            self.state.log(f"Opened in the system player: {Path(path).name}")
+            opened = QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+            name = Path(path).name
+            if opened:
+                self.state.log(f"Opened in the system player: {name}")
+                self.summary.show_message(
+                    f"{name} opened in your video player — the built-in one "
+                    f"cannot decode AV1.", "info",
+                )
+            else:
+                QMessageBox.information(
+                    self, "No video player",
+                    f"{name} is AV1, which the built-in player cannot "
+                    f"decode, and no system video player answered.\n\n"
+                    f"Open it yourself from:\n{path}",
+                )
             return
 
         # The whole list goes with it, so the window can move between clips

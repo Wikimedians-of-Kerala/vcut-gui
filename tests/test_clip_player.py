@@ -153,19 +153,19 @@ def test_without_a_list_there_is_no_chooser(qt_app, tmp_path):
     assert dialog.chooser is None
 
 
-def test_an_av1_clip_plays_through_pyav(qt_app, tmp_path):
-    """Qt ships no AV1 decoder, so AV1 is decoded with PyAV instead.
+def test_an_av1_clip_is_sent_to_the_system_player(qt_app, tmp_path):
+    """Qt ships no AV1 decoder, and AV1 is what Commons wants.
 
-    Measured before this: the same three seconds delivered 0 frames as AV1
-    and 87 as VP9 or H.264, with Qt reporting PlayingState and no error --
-    a black rectangle and nothing to explain it. AV1 is the format this
-    program recommends for Commons, so its own output was what could not be
-    previewed.
+    Measured when this was found: the same three seconds delivered 0 frames
+    as AV1 and 87 as VP9 or H.264, with Qt reporting PlayingState and no
+    error -- a black rectangle and nothing to explain it.
+
+    Decoding it in-process was tried and abandoned: seeking and audio were
+    both poor enough that the desktop's own player is the better answer.
     """
     import subprocess
 
-    from vcut.gui import av_playback
-    from vcut.gui.clip_player_dialog import ClipPlayerDialog
+    from vcut.gui.clip_player_dialog import playable_here
 
     clip = tmp_path / "clip.webm"
     made = subprocess.run(
@@ -177,25 +177,7 @@ def test_an_av1_clip_plays_through_pyav(qt_app, tmp_path):
     if made.returncode != 0 or not clip.is_file():
         pytest.skip("this ffmpeg cannot encode AV1")
 
-    dialog = ClipPlayerDialog(str(clip), "An AV1 clip")
-    if av_playback.can_decode("av1"):
-        # Decoded in software rather than refused.
-        assert dialog._playback is not None
-        assert "AV1" in dialog.status.text()
-        dialog.accept()
-    else:
-        # Without PyAV it must still say why, not show black.
-        assert not dialog.play_button.isEnabled()
-        assert "cannot decode" in dialog.status.text()
-
-
-def test_pyav_can_decode_what_qt_cannot():
-    from vcut.gui import av_playback
-
-    if not av_playback.available():
-        pytest.skip("PyAV is not installed")
-    # This is the whole reason for the dependency.
-    assert av_playback.can_decode("av1")
+    assert playable_here(clip) is False
 
 
 def test_a_playable_codec_is_not_blocked(qt_app, tmp_path):
@@ -219,33 +201,6 @@ def test_a_playable_codec_is_not_blocked(qt_app, tmp_path):
 
 
 # -- choosing where to play ------------------------------------------------
-
-
-def test_a_codec_nothing_can_decode_goes_to_the_system_player(qt_app, tmp_path,
-                                                              monkeypatch):
-    """A window that paints black and offers a button is a wasted step."""
-    import subprocess
-
-    from vcut.gui import av_playback
-    from vcut.gui.clip_player_dialog import playable_here
-
-    clip = tmp_path / "clip.webm"
-    made = subprocess.run(
-        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
-         "-i", "testsrc2=size=160x90:rate=10:duration=1",
-         "-c:v", "libsvtav1", "-crf", "60", "-y", str(clip)],
-        capture_output=True,
-    )
-    if made.returncode != 0 or not clip.is_file():
-        pytest.skip("this ffmpeg cannot encode AV1")
-
-    # With PyAV it plays in the window.
-    monkeypatch.setattr(av_playback, "can_decode", lambda _c: True)
-    assert playable_here(clip) is True
-
-    # Without it, the desktop's own player is the honest answer.
-    monkeypatch.setattr(av_playback, "can_decode", lambda _c: False)
-    assert playable_here(clip) is False
 
 
 def test_an_ordinary_codec_always_plays_in_the_window(qt_app, tmp_path):

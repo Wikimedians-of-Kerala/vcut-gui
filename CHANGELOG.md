@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.6.0 — 2026-10-05
+
+**AV1 clips now play.** The format this program recommends for Commons was
+the one it could not show.
+
+### New
+
+- **PyAV decodes AV1**, which Qt cannot. Qt Multimedia carries its own
+  FFmpeg build and it ships no AV1 decoder — no libdav1d, no libaom — while
+  the FFmpeg this program cuts and converts with has three. So a clip
+  encoded perfectly and then played as a black rectangle, with the player
+  reporting that it was playing and no error at all.
+
+  PyAV bundles libdav1d. Measured on a 2560×1440 clip: 60 frames decoded in
+  0.15s, and 30 frames decoded and scaled to RGB in 0.11s, so software
+  decoding keeps ahead of playback comfortably. Audio is resampled and
+  played too — a silent preview is little use for checking that a cut starts
+  in the right place.
+
+  This adds 25 MB to a 265 MB package. Everything Qt can decode still goes
+  through Qt; this path is only for the codecs it cannot.
+
+- **The verify screen says when its source is AV1.** The same fault applied
+  there, and it is the screen where the picture matters most. The message
+  also says what still works: cutting and converting are the system
+  FFmpeg's job and are unaffected.
+
+- **A clip nothing can decode opens in the desktop's own player**, rather
+  than a window that paints black and offers a button. With PyAV installed
+  this does not arise; it is for a build without it.
+
 ## 1.5.0 — 2026-10-05
 
 ### New
