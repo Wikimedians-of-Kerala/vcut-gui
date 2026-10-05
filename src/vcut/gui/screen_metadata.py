@@ -8,11 +8,13 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QBrush, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QHeaderView,
+    QCheckBox,
     QComboBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
+    QLabel,
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
@@ -100,7 +102,57 @@ class MetadataScreen(QWidget):
         )
         self.date_field.editingFinished.connect(self.refresh)
         form.addRow("Date override", self.date_field)
+
+        # How the Commons name is built. Both are matters of house style, so
+        # they sit with the other per-event details rather than in settings.
+        naming = QHBoxLayout()
+        naming.setSpacing(SPACE_ROW)
+
+        self.include_code_box = QCheckBox("Add the schedule's talk code")
+        self.include_code_box.setChecked(
+            self.state.settings.commons_include_code
+        )
+        self.include_code_box.setToolTip(
+            "The short code from the conference schedule, such as (JGCFCR).\n"
+            "It makes every name unique, which matters when two sessions\n"
+            "share a title, but means nothing to most readers."
+        )
+        self.include_code_box.toggled.connect(self._naming_changed)
+        naming.addWidget(self.include_code_box)
+
+        naming.addWidget(QLabel("Between words:"))
+        self.separator_box = QComboBox()
+        for label, value in (
+            ("Space", " "), ("Underscore _", "_"), ("Hyphen -", "-"),
+        ):
+            self.separator_box.addItem(label, value)
+        index = self.separator_box.findData(
+            self.state.settings.commons_word_separator
+        )
+        self.separator_box.setCurrentIndex(index if index >= 0 else 0)
+        self.separator_box.setToolTip(
+            "Commons stores titles with spaces and only shows underscores in\n"
+            "addresses — the two mean the same thing there — so this is a\n"
+            "matter of taste rather than a requirement."
+        )
+        self.separator_box.currentIndexChanged.connect(self._naming_changed)
+        naming.addWidget(self.separator_box)
+        naming.addStretch(1)
+
+        form.addRow("File naming", naming)
         return group
+
+    def _naming_changed(self) -> None:
+        """Rebuild every generated name after a naming option changes.
+
+        Names typed by hand are left alone: the user meant those.
+        """
+        settings = self.state.settings
+        settings.commons_include_code = self.include_code_box.isChecked()
+        separator = self.separator_box.currentData()
+        settings.commons_word_separator = separator if separator else " "
+        self.state.save_settings()
+        self.refresh()
 
     def _table_panel(self) -> QWidget:
         panel = QWidget()

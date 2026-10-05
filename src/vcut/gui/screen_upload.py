@@ -113,6 +113,16 @@ class UploadScreen(QWidget):
         options.addWidget(self.dry_run_box)
         self.ignore_box = QCheckBox("Ignore Commons warnings (e.g. duplicate names)")
         options.addWidget(self.ignore_box)
+
+        # Replacing a file is a deliberate act, so it gets its own option
+        # rather than hiding inside "ignore warnings".
+        self.new_version_box = QCheckBox("Upload as a new version if the name exists")
+        self.new_version_box.setToolTip(
+            "Commons keeps a file's history, so this replaces the current\n"
+            "version and leaves the old one in the file's history.\n"
+            "Without this, an upload stops when the name is taken."
+        )
+        options.addWidget(self.new_version_box)
         options.addStretch(1)
         layout.addLayout(options)
 
@@ -383,6 +393,7 @@ class UploadScreen(QWidget):
             comment=self.comment_field.text().strip(),
             ignore_warnings=self.ignore_box.isChecked(),
             dry_run=dry_run,
+            new_version=self.new_version_box.isChecked(),
         )
         self._worker.signals.row_finished.connect(self._row_finished)
         self._worker.signals.uploaded.connect(self._record_upload)

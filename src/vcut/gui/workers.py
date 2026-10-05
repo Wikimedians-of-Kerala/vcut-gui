@@ -277,13 +277,14 @@ class UploadWorker(QRunnable):
 
     def __init__(self, files: list[tuple[int, CommonsFile]], *,
                  comment: str = "", ignore_warnings: bool = False,
-                 dry_run: bool = False) -> None:
+                 dry_run: bool = False, new_version: bool = False) -> None:
         super().__init__()
         self.signals = WorkerSignals()
         self._files = files
         self._comment = comment or "Uploading conference session recording"
         self._ignore_warnings = ignore_warnings
         self._dry_run = dry_run
+        self._new_version = new_version
         self._cancelled = False
 
     def cancel(self) -> None:
@@ -303,6 +304,7 @@ class UploadWorker(QRunnable):
                     comment=self._comment,
                     ignore_warnings=self._ignore_warnings,
                     dry_run=self._dry_run,
+                    new_version=self._new_version,
                 )
             except UploadError as exc:
                 failed += 1

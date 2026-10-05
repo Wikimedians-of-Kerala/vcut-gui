@@ -196,3 +196,22 @@ def test_a_network_failure_does_not_block_the_upload(monkeypatch):
 
     monkeypatch.setattr(httpx, "get", explode)
     assert upload.tag_is_available() is False
+
+
+def test_an_existing_name_is_its_own_kind_of_failure():
+    """There is something to offer, unlike every other upload failure."""
+    from vcut.upload import FileExistsOnCommons, UploadError
+
+    error = FileExistsOnCommons("My file.webm")
+    assert isinstance(error, UploadError)
+    assert error.filename == "My file.webm"
+    # The message must say what can be done about it.
+    assert "new version" in str(error).lower()
+
+
+def test_uploading_a_new_version_is_asked_for_explicitly():
+    import inspect
+
+    from vcut.upload import upload_file
+
+    assert "new_version" in inspect.signature(upload_file).parameters

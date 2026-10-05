@@ -25,6 +25,21 @@ class UploadError(RuntimeError):
     """Raised when an upload cannot be attempted or fails."""
 
 
+class FileExistsOnCommons(UploadError):
+    """Commons already has a file under this name.
+
+    Separate from other failures because there is something to offer: the
+    upload can be repeated as a new version of the existing file.
+    """
+
+    def __init__(self, filename: str) -> None:
+        super().__init__(
+            f"Commons already has a file called {filename}. Upload it as a "
+            f"new version, or change the Commons name."
+        )
+        self.filename = filename
+
+
 @dataclass
 class LoginStatus:
     """Whether Commons can be uploaded to, by whichever route."""
@@ -202,6 +217,7 @@ def upload_file(
     comment: str = "",
     ignore_warnings: bool = False,
     dry_run: bool = False,
+    new_version: bool = False,
     family: str = "commons",
     code: str = "commons",
 ) -> str:
@@ -215,7 +231,7 @@ def upload_file(
 
     # A browser session is preferred when there is one: it is how an account
     # with a passkey or two-factor sign-in gets here at all.
-    session_result = _try_browser_session(prepared, comment)
+    session_result = _try_browser_session(prepared, comment, new_version=new_version)
     if session_result is not None:
         return session_result
 
@@ -314,7 +330,8 @@ def _user_agent() -> str:
     return USER_AGENT
 
 
-def _try_browser_session(prepared: CommonsFile, comment: str) -> str | None:
+def _try_browser_session(prepared: CommonsFile, comment: str,
+                         *, new_version: bool = False) -> str | None:
     """Upload with captured browser cookies, or return ``None`` to fall back."""
     try:
         from .gui import browser_login
@@ -335,10 +352,15 @@ def _try_browser_session(prepared: CommonsFile, comment: str) -> str | None:
             session, prepared.local_path, prepared.filename,
             prepared.wikitext, comment=comment,
             tags=CHANGE_TAG if tag_is_available() else "",
+            new_version=new_version,
         )
+    except browser_login.FileExists as exc:
+        # Let this one through unchanged: the caller can offer to replace
+        # the file, which no other failure allows.
+        raise FileExistsOnCommons(exc.filename) from exc
     except RuntimeError as exc:
         raise UploadError(str(exc)) from exc
-    return f"uploaded as {name}"
+    return f"{'new version of' if new_version else 'uploaded as'} {name}"
 
 
 def commons_url(filename: str) -> str:

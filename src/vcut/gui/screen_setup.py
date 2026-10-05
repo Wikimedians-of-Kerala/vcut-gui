@@ -427,14 +427,16 @@ class SetupScreen(QWidget):
         else:
             self.speed_spin.setRange(0, 13)
             self.speed_hint.show_message("Not used by this encoder.")
-            self.speed_spin.setEnabled(False)
-            return
-        self.speed_spin.setEnabled(True)
+        self.speed_spin.setEnabled(
+            defaults["video_codec"] == "libsvtav1"
+            or str(defaults["video_codec"]).startswith("libvpx")
+        )
 
-        if not fmt.commons_compatible and _as_cut_mode(self.cut_box.currentData()) is CutMode.COPY:
-            self.cut_hint.show_message(
-                "Stream copy is the fastest way to review cuts.", "info"
-            )
+        # The cut-mode note depends on the format too -- stream copy can copy
+        # an MP4 but cannot produce WebM -- so it is rebuilt here. It used to
+        # sit after an early return, so it never ran for a format without a
+        # speed setting, which is exactly the MP4 case where copying works.
+        self._cut_mode_changed()
 
     def _copy_cost(self) -> str:
         """What stream copy would actually cost on the chosen file.

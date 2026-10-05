@@ -88,6 +88,11 @@ class CommonsSettings:
     template: str = ""
     date_override: str = ""
     filename_template: str = "{title} - {event} ({code}).{ext}"
+    #: Whether the schedule's talk code goes in the name.
+    include_code: bool = True
+    #: What separates words in the name. Commons treats spaces and
+    #: underscores as the same character, so this is a matter of taste.
+    word_separator: str = " "
     language: str = "en"
     append_text: str = ""
 
@@ -126,6 +131,8 @@ def commons_filename(
     extension: str = "webm",
     template: str = "{title} - {event} ({code}).{ext}",
     max_length: int = 200,
+    include_code: bool = True,
+    word_separator: str = " ",
 ) -> str:
     """Build the name the file will carry on Commons.
 
@@ -134,6 +141,10 @@ def commons_filename(
     """
     title = (session.title if session else "") or clip.programme or "Video"
     code = (session.code if session else "") or clip.eventyay_id or ""
+    if not include_code:
+        # Left empty rather than removed from the template, so the tidying
+        # below strips the brackets and stray separators it leaves behind.
+        code = ""
 
     name = template.format(
         title=title, event=event_title, code=code, ext=extension,
@@ -162,6 +173,9 @@ def commons_filename(
     encoded = stem.encode("utf-8")
     if len(encoded) > budget:
         stem = encoded[:budget].decode("utf-8", "ignore").rstrip(" -_")
+
+    if word_separator and word_separator != " ":
+        stem = stem.replace(" ", word_separator)
 
     return f"{stem}.{ext}"
 
@@ -284,6 +298,8 @@ def prepare_file(
             event_title=event_info.get("title", ""),
             extension=extension,
             template=settings.filename_template,
+            include_code=settings.include_code,
+            word_separator=settings.word_separator,
         )
 
     if path and not Path(path).is_file():

@@ -245,3 +245,72 @@ def test_a_blank_override_is_ignored(tmp_path):
     clip.commons_name_override = "   "
 
     assert "A talk" in prepare_file(clip, settings=CommonsSettings()).filename
+
+
+# -- how the Commons name is built -----------------------------------------
+
+
+def test_the_talk_code_can_be_left_out():
+    """The code makes names unique but means nothing to most readers."""
+    from vcut.commons import commons_filename
+    from vcut.models import Clip
+
+    clip = Clip(programme="A talk", start_time="0", end_time="1",
+                eventyay_id="ABC123")
+
+    with_code = commons_filename(clip, event_title="Conf 2026")
+    without = commons_filename(clip, event_title="Conf 2026", include_code=False)
+
+    assert "ABC123" in with_code
+    assert "ABC123" not in without
+    # And no empty brackets or stray separators left behind.
+    assert "()" not in without
+    assert " - ." not in without
+
+
+def test_words_can_be_joined_with_another_character():
+    from vcut.commons import commons_filename
+    from vcut.models import Clip
+
+    clip = Clip(programme="A longer talk title", start_time="0", end_time="1")
+
+    spaced = commons_filename(clip, word_separator=" ")
+    scored = commons_filename(clip, word_separator="_")
+
+    assert " " in spaced
+    assert " " not in scored
+    assert "A_longer_talk_title" in scored
+
+
+def test_the_separator_does_not_touch_the_extension():
+    from vcut.commons import commons_filename
+    from vcut.models import Clip
+
+    clip = Clip(programme="A talk", start_time="0", end_time="1")
+    name = commons_filename(clip, word_separator="_", extension="webm")
+    assert name.endswith(".webm")
+    assert name.count(".") == 1
+
+
+def test_both_options_together():
+    from vcut.commons import commons_filename
+    from vcut.models import Clip
+
+    clip = Clip(programme="A talk", start_time="0", end_time="1",
+                eventyay_id="ABC123")
+    name = commons_filename(
+        clip, event_title="Conf 2026", include_code=False, word_separator="_"
+    )
+    assert "ABC123" not in name and " " not in name
+
+
+def test_the_settings_reach_the_renderer():
+    from vcut.settings import AppSettings
+
+    settings = AppSettings()
+    settings.commons_include_code = False
+    settings.commons_word_separator = "_"
+
+    commons = settings.commons_settings()
+    assert commons.include_code is False
+    assert commons.word_separator == "_"

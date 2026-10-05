@@ -92,6 +92,17 @@ class AppSettings:
     commons_categories: list[str] = field(default_factory=list)
     commons_template: str = ""        # empty means the built-in default template
     date_override: str = ""
+    #: The name a file takes on Commons. Tokens: {title} {event} {code}
+    #: {author} {date} {room} {ext}.
+    commons_filename_template: str = "{title} - {event} ({code}).{ext}"
+    #: Whether to put the schedule's talk code in the name. It makes every
+    #: name unique, which matters for a conference where two sessions can
+    #: share a title, but it is noise to a reader who does not know pretalx.
+    commons_include_code: bool = True
+    #: What to put between words. Commons stores titles with spaces and only
+    #: shows underscores in addresses -- the two are interchangeable there --
+    #: so this is for anyone who wants a different look, not a requirement.
+    commons_word_separator: str = " "
 
     # Appearance
     theme: str = "system"          # "system", "light" or "dark"
@@ -147,6 +158,9 @@ class AppSettings:
             categories=list(self.commons_categories),
             template=self.commons_template,
             date_override=self.date_override,
+            filename_template=self.commons_filename_template,
+            include_code=self.commons_include_code,
+            word_separator=self.commons_word_separator,
         )
 
     @property

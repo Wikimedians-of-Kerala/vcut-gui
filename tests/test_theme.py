@@ -192,7 +192,7 @@ def test_stream_copy_states_what_it_costs_on_this_file(qt_app):
     Copying is hundreds of times faster, and on a conference recording the
     drift is usually harmless, so the user needs the real number to judge.
     """
-    from vcut.ffmpeg import CutMode, MediaInfo
+    from vcut.ffmpeg import CutMode, MediaInfo, OutputFormat
     from vcut.gui.main_window import MainWindow
     from vcut.models import Clip
 
@@ -210,6 +210,9 @@ def test_stream_copy_states_what_it_costs_on_this_file(qt_app):
 
     # Re-render after the clips land: set_source replaces the list.
     screen.cut_box.setCurrentIndex(screen.cut_box.findData(CutMode.SMART))
+    # Stream copy only applies to an MP4 target: it cannot change the codec,
+    # so for WebM the note says that instead.
+    screen.format_box.setCurrentIndex(screen.format_box.findData(OutputFormat.MP4.value))
     screen.cut_box.setCurrentIndex(screen.cut_box.findData(CutMode.COPY))
     text = screen.cut_hint.text()
 
@@ -219,7 +222,7 @@ def test_stream_copy_states_what_it_costs_on_this_file(qt_app):
 
 
 def test_an_unmeasured_file_does_not_invent_a_figure(qt_app):
-    from vcut.ffmpeg import CutMode, MediaInfo
+    from vcut.ffmpeg import CutMode, MediaInfo, OutputFormat
     from vcut.gui.main_window import MainWindow
 
     window = MainWindow()
@@ -227,6 +230,7 @@ def test_an_unmeasured_file_does_not_invent_a_figure(qt_app):
     window.state.set_source("day1.mp4", MediaInfo(duration=600.0))
     window.state.clips = []
 
+    screen.format_box.setCurrentIndex(screen.format_box.findData(OutputFormat.MP4.value))
     screen.cut_box.setCurrentIndex(screen.cut_box.findData(CutMode.COPY))
     text = screen.cut_hint.text()
 
@@ -235,7 +239,7 @@ def test_an_unmeasured_file_does_not_invent_a_figure(qt_app):
 
 
 def test_an_unparseable_row_does_not_break_the_hint(qt_app):
-    from vcut.ffmpeg import CutMode, MediaInfo
+    from vcut.ffmpeg import CutMode, MediaInfo, OutputFormat
     from vcut.gui.main_window import MainWindow
     from vcut.models import Clip
 

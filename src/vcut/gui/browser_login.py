@@ -180,8 +180,21 @@ def make_browser_page(parent=None):
     return view, profile
 
 
+class FileExists(RuntimeError):
+    """Commons already has a file under this name.
+
+    Raised on its own so the caller can offer to upload a new version,
+    which is a different decision from any other upload failure.
+    """
+
+    def __init__(self, filename: str) -> None:
+        super().__init__(f"Commons already has a file called {filename}")
+        self.filename = filename
+
+
 def upload_with_session(session: Session, path, filename: str, wikitext: str,
                         *, comment: str = "", tags: str = "",
+                        new_version: bool = False,
                         timeout: float = 600.0) -> str:
     """Upload a file using captured browser cookies.
 
@@ -217,6 +230,10 @@ def upload_with_session(session: Session, path, filename: str, wikitext: str,
     # the whole upload fail, and the file matters more than the label.
     if tags:
         data["tags"] = tags
+    if new_version:
+        # Replacing a file deliberately: "exists" is the warning being
+        # answered, so it has to be ignored for the upload to go through.
+        data["ignorewarnings"] = "1"
 
     with source.open("rb") as handle:
         files = {"file": (filename, handle, "application/octet-stream")}
@@ -236,6 +253,11 @@ def upload_with_session(session: Session, path, filename: str, wikitext: str,
     result = payload.get("upload", {})
     if result.get("result") != "Success":
         warnings = result.get("warnings", {})
+        # A name already in use is worth separating from every other
+        # warning: there is something sensible to offer, rather than only
+        # something to report.
+        if "exists" in warnings and not new_version:
+            raise FileExists(str(warnings.get("exists") or filename))
         if warnings:
             raise RuntimeError(f"Commons warned: {', '.join(warnings)}")
         raise RuntimeError(f"upload did not succeed: {result.get('result', '?')}")
