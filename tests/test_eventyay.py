@@ -34,7 +34,7 @@ PAYLOAD = {
                                 "language": "en",
                                 "url": "https://example.org/talk/FWLP9F/",
                                 "do_not_record": False,
-                                "persons": [{"public_name": "Lorenzo Losa"}],
+                                "persons": [{"public_name": "Ravi Kumar"}],
                             },
                             {
                                 # Registration slots carry no talk code.
@@ -95,7 +95,7 @@ def test_entries_without_a_code_are_ignored():
 
 
 def test_speakers_become_the_author_string():
-    assert parse_sessions(PAYLOAD)["FWLP9F"].author == "Lorenzo Losa"
+    assert parse_sessions(PAYLOAD)["FWLP9F"].author == "Ravi Kumar"
 
 
 def test_session_day_is_taken_from_the_schedule_day():

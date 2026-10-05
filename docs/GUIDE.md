@@ -44,8 +44,8 @@ Tab- or comma-separated, with a header row:
 
 ```
 programme	start_time	end_time	eventyay_id	author
-Welcome and Opening Remarks	00:10:59	00:33:34	7NXGTK	James Watson
-Keynote: The Next Decade	00:35:02	01:21:40	BKQ3MF	Antony Thomas
+Welcome and Opening Remarks	00:10:59	00:33:34	7NXGTK	Asha Menon
+Keynote: The Next Decade	00:35:02	01:21:40	BKQ3MF	Ravi Kumar
 ```
 
 Only `start_time` and `end_time` are required. Column names are matched

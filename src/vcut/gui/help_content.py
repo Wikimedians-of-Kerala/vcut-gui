@@ -238,7 +238,7 @@ uploading</i>.</p>
 comma-separated, with a header row:</p>
 
 <p><tt>programme&nbsp;&nbsp;start_time&nbsp;&nbsp;end_time&nbsp;&nbsp;eventyay_id&nbsp;&nbsp;author</tt><br>
-<tt>Welcome&nbsp;and&nbsp;Opening&nbsp;&nbsp;00:10:59&nbsp;&nbsp;00:33:34&nbsp;&nbsp;7NXGTK&nbsp;&nbsp;Chinmayee&nbsp;Mishra</tt></p>
+<tt>Welcome&nbsp;and&nbsp;Opening&nbsp;&nbsp;00:10:59&nbsp;&nbsp;00:33:34&nbsp;&nbsp;7NXGTK&nbsp;&nbsp;Asha&nbsp;Menon</tt></p>
 
 <p>Only the start and end times are required. Column names are matched
 loosely — <i>title</i>, <i>session</i> and <i>programme</i> all work, as do

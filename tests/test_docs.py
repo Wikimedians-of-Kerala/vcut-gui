@@ -189,3 +189,44 @@ def test_the_build_guide_lists_every_artifact_ci_produces():
     building = read("docs/BUILDING.md")
     missing = sorted(name for name in uploaded if name not in building)
     assert not missing, f"BUILDING.md never mentions: {missing}"
+
+
+#: Names of real people that were once used as example data. Sample
+#: schedules and fixtures came from an actual conference, so real speakers
+#: ended up in the documentation, the help screen and the test data. They
+#: did not consent to appear in a software manual, and a name there is
+#: indexed and copied far beyond this repository.
+REAL_PEOPLE = (
+    "Chinmayee",
+    "Jinoy",
+    "Tom Jacob",
+    "James Watson",
+    "Antony Thomas",
+    "Lorenzo",
+    "Losa",
+)
+
+
+def test_no_real_people_in_examples_or_fixtures():
+    """Example data must use obvious placeholders, not real speakers."""
+    from pathlib import Path
+
+    searched = [
+        Path("README.md"),
+        *Path("docs").glob("*.md"),
+        *Path("examples").glob("*"),
+        *Path("tests").glob("*.py"),
+        *Path("tests/data").glob("*"),
+        *Path("src").rglob("*.py"),
+    ]
+
+    found = []
+    for path in searched:
+        if not path.is_file() or path.name == "test_docs.py":
+            continue
+        text = path.read_text(encoding="utf-8")
+        for name in REAL_PEOPLE:
+            if name.lower() in text.lower():
+                found.append(f"{path}: {name}")
+
+    assert not found, "real people in example data: " + ", ".join(found)

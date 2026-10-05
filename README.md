@@ -230,7 +230,7 @@ Tab- or comma-separated, with a header row:
 
 ```
 programme	start_time	end_time	eventyay_id	author
-Welcome and Opening Remarks	00:10:59	00:33:34	7NXGTK	Chinmayee Mishra
+Welcome and Opening Remarks	00:10:59	00:33:34	7NXGTK	Asha Menon
 ```
 
 Only the start and end times are required. Column names are matched flexibly

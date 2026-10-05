@@ -6,7 +6,7 @@ from vcut.csvio import map_headers, parse_clips, read_clips, write_clips
 
 TSV = (
     "programme\tstart_time\tend_time\teventyay_id\tauthor\n"
-    "Welcome and Opening Remarks\t00:10:59\t00:33:34\t7NXGTK\tChinmayee Mishra, Jinoy Tom Jacob\n"
+    "Welcome and Opening Remarks\t00:10:59\t00:33:34\t7NXGTK\tAsha Menon, Ravi Kumar\n"
     "Wikimedians of Kerala\t01:31:41\t01:35:42\t\t\n"
 )
 
@@ -16,7 +16,7 @@ def test_parses_tab_separated_schedule():
     assert len(clips) == 2
     assert clips[0].programme == "Welcome and Opening Remarks"
     assert clips[0].eventyay_id == "7NXGTK"
-    assert clips[0].author.startswith("Chinmayee")
+    assert clips[0].author.startswith("Asha")
 
 
 def test_rows_without_an_event_id_are_still_parsed():
