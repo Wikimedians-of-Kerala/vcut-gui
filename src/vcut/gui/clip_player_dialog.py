@@ -38,6 +38,26 @@ from .theme import SPACE_EDGE, SPACE_ROW, SPACE_TIGHT
 from .widgets import StatusLabel, human_size
 
 
+#: Codecs Qt Multimedia cannot decode. Its bundled FFmpeg ships no AV1
+#: decoder, while the system ffmpeg this program cuts with has three.
+QT_CANNOT_DECODE = ("av1",)
+
+
+def playable_here(path: str | Path) -> bool:
+    """Whether this file can be shown in the built-in player.
+
+    False means the desktop's own player should be used instead: a window
+    that paints black and offers a button is a step nobody needs.
+    """
+    try:
+        codec = (probe(path).video_codec or "").lower()
+    except Exception:  # noqa: BLE001 - assume playable and let it try
+        return True
+    if codec not in QT_CANNOT_DECODE:
+        return True
+    return av_playback.can_decode(codec)
+
+
 class ClipPlayerDialog(QDialog):
     """Play one clip from disk."""
 

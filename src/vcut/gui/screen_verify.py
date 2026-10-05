@@ -864,7 +864,33 @@ class VerifyScreen(QWidget):
 
     # -- cutting -----------------------------------------------------------
 
+    def _unplayable_codec(self) -> str:
+        """The source codec, when Qt cannot decode it.
+
+        Qt Multimedia ships no AV1 decoder, so an AV1 source plays as a
+        black rectangle with no error reported -- the same fault the clip
+        preview hit. Cutting is unaffected, because that is the system
+        ffmpeg's job and it decodes AV1 perfectly; only the picture here is
+        missing, which is worth saying rather than leaving to guesswork.
+        """
+        info = self.state.media_info
+        codec = (getattr(info, "video_codec", "") or "").lower()
+        return codec if codec in ("av1",) else ""
+
     def _refresh_summary(self) -> None:
+        unplayable = self._unplayable_codec()
+        if unplayable:
+            # Said first: it explains a black screen the user is looking at.
+            self.summary.show_message(
+                f"This video is {unplayable.upper()}, which the built-in "
+                f"player cannot show — the picture stays black. Cutting and "
+                f"converting are unaffected, and the clip preview on the "
+                f"next step plays {unplayable.upper()} correctly.",
+                "warn",
+            )
+            self.split_button.setEnabled(bool(self.state.clips))
+            return
+
         clips = self.state.clips
         if not clips:
             self.summary.show_message("Load a video and a timecode list to begin.", "muted")

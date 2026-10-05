@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QDate, Qt, Signal
+from PySide6.QtCore import QDate, Qt, QUrl, Signal
 from PySide6.QtGui import QBrush, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -209,7 +209,17 @@ class MetadataScreen(QWidget):
             )
             return
 
-        from .clip_player_dialog import ClipPlayerDialog
+        from .clip_player_dialog import ClipPlayerDialog, playable_here
+
+        if not playable_here(path):
+            # Nothing here can decode it, so a window that shows black and
+            # offers a button is a step the user does not need: hand the
+            # file straight to whatever the desktop plays video with.
+            from PySide6.QtGui import QDesktopServices
+
+            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+            self.state.log(f"Opened in the system player: {Path(path).name}")
+            return
 
         # The whole list goes with it, so the window can move between clips
         # without being closed and reopened for each one.

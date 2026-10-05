@@ -216,3 +216,89 @@ def test_a_playable_codec_is_not_blocked(qt_app, tmp_path):
     dialog = ClipPlayerDialog(str(clip), "An H.264 clip")
     assert dialog.play_button.isEnabled()
     assert "cannot decode" not in dialog.status.text()
+
+
+# -- choosing where to play ------------------------------------------------
+
+
+def test_a_codec_nothing_can_decode_goes_to_the_system_player(qt_app, tmp_path,
+                                                              monkeypatch):
+    """A window that paints black and offers a button is a wasted step."""
+    import subprocess
+
+    from vcut.gui import av_playback
+    from vcut.gui.clip_player_dialog import playable_here
+
+    clip = tmp_path / "clip.webm"
+    made = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+         "-i", "testsrc2=size=160x90:rate=10:duration=1",
+         "-c:v", "libsvtav1", "-crf", "60", "-y", str(clip)],
+        capture_output=True,
+    )
+    if made.returncode != 0 or not clip.is_file():
+        pytest.skip("this ffmpeg cannot encode AV1")
+
+    # With PyAV it plays in the window.
+    monkeypatch.setattr(av_playback, "can_decode", lambda _c: True)
+    assert playable_here(clip) is True
+
+    # Without it, the desktop's own player is the honest answer.
+    monkeypatch.setattr(av_playback, "can_decode", lambda _c: False)
+    assert playable_here(clip) is False
+
+
+def test_an_ordinary_codec_always_plays_in_the_window(qt_app, tmp_path):
+    import subprocess
+
+    from vcut.gui.clip_player_dialog import playable_here
+
+    clip = tmp_path / "clip.mp4"
+    made = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+         "-i", "testsrc2=size=160x90:rate=10:duration=1",
+         "-c:v", "libx264", "-crf", "40", "-y", str(clip)],
+        capture_output=True,
+    )
+    if made.returncode != 0 or not clip.is_file():
+        pytest.skip("this ffmpeg cannot encode H.264")
+
+    assert playable_here(clip) is True
+
+
+def test_an_unreadable_file_is_attempted_rather_than_refused(tmp_path):
+    # A probe failure should not stop the user trying.
+    from vcut.gui.clip_player_dialog import playable_here
+
+    assert playable_here(tmp_path / "nothing-here.webm") is True
+
+
+def test_the_verify_screen_warns_about_an_av1_source(qt_app, tmp_path):
+    """The same fault, on the screen where the picture matters most.
+
+    Cutting is unaffected -- that is the system ffmpeg's job -- so the
+    message says what still works rather than only what does not.
+    """
+    import subprocess
+
+    from vcut.ffmpeg import probe
+    from vcut.gui.main_window import MainWindow
+
+    source = tmp_path / "source.webm"
+    made = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+         "-i", "testsrc2=size=160x90:rate=10:duration=1",
+         "-c:v", "libsvtav1", "-crf", "60", "-y", str(source)],
+        capture_output=True,
+    )
+    if made.returncode != 0 or not source.is_file():
+        pytest.skip("this ffmpeg cannot encode AV1")
+
+    window = MainWindow()
+    window.state.set_source(str(source), probe(source))
+    text = window.verify_screen.summary.text()
+
+    assert "AV1" in text
+    assert "black" in text.lower()
+    # And it must say cutting still works.
+    assert "cutting" in text.lower()
