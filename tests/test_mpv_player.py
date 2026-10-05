@@ -96,3 +96,64 @@ def test_the_verify_screen_uses_libmpv_when_it_is_there(qt_app):
 
         assert isinstance(screen.player, QMediaPlayer)
         assert screen._video_surface() is screen.video
+
+
+def test_the_numeric_locale_is_forced_to_c():
+    """libmpv aborts the whole process under any other numeric locale.
+
+    "Non-C locale detected. This is not supported." is fatal, not a
+    warning, and Qt sets the user's locale while starting -- so it has to
+    be put back immediately before libmpv is created.
+    """
+    import inspect
+
+    source = inspect.getsource(mpv_player.MpvPlayer._ensure)
+    assert "LC_NUMERIC" in source
+    assert 'setlocale' in source
+    # Only the numeric part: dates and text stay the user's.
+    assert "LC_ALL" not in source
+
+
+def test_wayland_sessions_are_moved_to_xwayland():
+    """libmpv embeds by native window id, which is an X11 mechanism.
+
+    On Wayland there is no id to hand over, so mpv opens a window of its
+    own and the video appears outside the application.
+    """
+    import inspect
+    import os
+
+    from vcut.gui.app import _embed_video_under_x11, main
+
+    source = inspect.getsource(_embed_video_under_x11)
+    assert "xcb" in source
+    assert "WAYLAND_DISPLAY" in source
+    # A platform the user chose must not be overridden.
+    assert "QT_QPA_PLATFORM" in source
+
+    # And it has to run before QApplication reads the platform.
+    body = inspect.getsource(main)
+    assert body.index("_embed_video_under_x11()") < body.index("QApplication(argv)")
+
+
+def test_a_chosen_platform_is_respected(monkeypatch):
+    import os
+
+    from vcut.gui.app import _embed_video_under_x11
+
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    _embed_video_under_x11()
+    assert os.environ["QT_QPA_PLATFORM"] == "offscreen"
+
+
+def test_an_x11_session_is_left_alone(monkeypatch):
+    import os
+
+    from vcut.gui.app import _embed_video_under_x11
+
+    monkeypatch.delenv("QT_QPA_PLATFORM", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.setenv("DISPLAY", ":0")
+    _embed_video_under_x11()
+    assert "QT_QPA_PLATFORM" not in os.environ

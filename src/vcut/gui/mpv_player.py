@@ -90,6 +90,17 @@ class MpvPlayer(QObject):
     def _ensure(self):
         if self._mpv is not None:
             return self._mpv
+
+        # libmpv refuses to run under anything but the C numeric locale and
+        # aborts the whole process when it finds one -- "Non-C locale
+        # detected. This is not supported." Qt sets the user's locale while
+        # starting, so this has to be put back just before libmpv is
+        # created. Only LC_NUMERIC: the rest of the locale is the user's and
+        # affects how dates and text are shown.
+        import locale
+
+        locale.setlocale(locale.LC_NUMERIC, "C")
+
         import mpv
 
         options = {
