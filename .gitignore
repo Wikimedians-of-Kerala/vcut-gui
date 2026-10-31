@@ -9,3 +9,6 @@ build/
 .coverage
 htmlcov/
 *.egg-info/
+
+# Pywikibot runtime state, rewritten on every upload.
+throttle.ctrl
