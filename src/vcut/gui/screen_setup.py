@@ -61,8 +61,11 @@ from .widgets import (
 )
 from .workers import ProbeWorker, ScheduleWorker, start
 
+# MXF is listed in both cases: camera cards name files C0001.MXF, and the
+# Linux file dialogs match patterns case-sensitively.
 VIDEO_FILTER = (
-    "Video files (*.mp4 *.mkv *.mov *.webm *.avi *.m4v *.mpg *.mpeg *.ts);;All files (*)"
+    "Video files (*.mp4 *.mkv *.mov *.webm *.avi *.m4v *.mpg *.mpeg *.ts *.mxf *.MXF)"
+    ";;All files (*)"
 )
 CSV_FILTER = "Timecode lists (*.csv *.tsv *.txt);;All files (*)"
 

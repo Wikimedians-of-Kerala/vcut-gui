@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased
+
+**MXF recordings convert straight to WebM.** Broadcast and camera MXF
+(XDCAM, IMX, AVC-Intra) can be chosen as the source and cut directly to
+WebM AV1 or VP9, with no MP4 step in between.
+
+### New
+
+- **MXF files can be picked as the source**, in either case — camera cards
+  name them `C0001.MXF`.
+
+- **Two mono audio tracks become one stereo track.** MXF stores each
+  channel as its own track; track 1 now becomes the left channel and track
+  2 the right, where before only the first was kept. Copied MP4 cuts keep
+  every track, so the later conversion to WebM can still merge them.
+
+### Fixed
+
+- **Interlaced recordings are deinterlaced.** 1080i and 576i footage was
+  encoded field by field and showed combing on every movement. Only frames
+  the source marks as interlaced are touched, so progressive video is
+  unchanged.
+
+- **4:2:2 and 10-bit sources play in a browser.** VP9 came out as profile 1
+  and H.264 as High 4:2:2; every encode now delivers 8-bit 4:2:0.
+
 ## 1.7.0 — 2026-10-05
 
 **AV1 video now plays inside the program.** 1.6.0 could only hand an AV1

@@ -19,6 +19,7 @@ tail of the previous session.
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
@@ -387,10 +388,17 @@ def build_command(
     settings: EncodingSettings,
     *,
     ffmpeg_path: str = "",
+    merge_tracks: bool | None = None,
 ) -> list[str]:
-    """Assemble the ffmpeg argument list for one clip."""
+    """Assemble the ffmpeg argument list for one clip.
+
+    ``merge_tracks`` joins two mono audio tracks into one stereo track;
+    left as ``None`` it is decided by probing the source.
+    """
     if end <= start:
         raise ValueError("end time must be after start time")
+    if merge_tracks is None:
+        merge_tracks = has_paired_mono_tracks(source)
 
     exe = find_executable("ffmpeg", ffmpeg_path)
     start = max(0.0, start - settings.pad_start)
@@ -411,6 +419,10 @@ def build_command(
         # Fast seek, then copy: quickest, snapped to the preceding keyframe.
         command += ["-ss", f"{start:.3f}", "-i", str(source), "-t", f"{duration:.3f}"]
         command += ["-c", "copy", "-avoid_negative_ts", "make_zero"]
+        if merge_tracks:
+            # Copying cannot run filters, so keep every track and let the
+            # conversion to WebM do the merge.
+            command += ["-map", "0:v:0", "-map", "0:a"]
 
     elif cut_mode is CutMode.SMART:
         # Seek fast to just before the cut, then seek accurately the rest of the
@@ -420,11 +432,11 @@ def build_command(
         if preroll:
             command += ["-ss", f"{preroll:.3f}"]
         command += ["-t", f"{duration:.3f}"]
-        command += _encode_args(settings)
+        command += _encode_args(settings, merge_tracks=merge_tracks)
 
     else:  # REENCODE — accurate seek from the beginning of the input.
         command += ["-i", str(source), "-ss", f"{start:.3f}", "-t", f"{duration:.3f}"]
-        command += _encode_args(settings)
+        command += _encode_args(settings, merge_tracks=merge_tracks)
 
     if settings.threads:
         command += ["-threads", str(settings.threads)]
@@ -453,12 +465,49 @@ def audio_filter(settings: EncodingSettings, *, source_channels: int = 0) -> str
     return ""
 
 
-def _audio_args(settings: EncodingSettings, source_channels: int = 0) -> list[str]:
+@functools.lru_cache(maxsize=32)
+def _paired_mono_tracks(source: str, mtime: float, ffprobe_path: str) -> bool:
+    try:
+        audio = probe(source, ffprobe_path).streams("audio")
+    except (FFmpegError, ValueError):
+        return False
+    return len(audio) >= 2 and all(int(s.get("channels") or 0) == 1 for s in audio[:2])
+
+
+def has_paired_mono_tracks(source: str | Path, ffprobe_path: str = "") -> bool:
+    """Whether the first two audio tracks are each a single mono channel.
+
+    Broadcast MXF (XDCAM, IMX, AVC-Intra) stores every channel as its own
+    mono track, left on the first and right on the second. ffmpeg would
+    keep only the first, so half the sound -- often the desk feed -- is lost.
+    """
+    try:
+        mtime = Path(source).stat().st_mtime
+    except OSError:
+        return False
+    return _paired_mono_tracks(str(source), mtime, ffprobe_path)
+
+
+#: Track 1 to the left channel, track 2 to the right.
+MERGE_TRACKS_FILTER = "[0:a:0][0:a:1]amerge=inputs=2"
+
+
+def _audio_args(
+    settings: EncodingSettings, source_channels: int = 0, *, merge_tracks: bool = False,
+) -> list[str]:
     """Audio codec flags, including any channel-layout filter."""
     args: list[str] = []
-    filter_text = audio_filter(settings, source_channels=source_channels)
-    if filter_text:
-        args += ["-af", filter_text]
+    if merge_tracks:
+        # The merged pair is already stereo, so only a mono downmix still
+        # applies. Naming the outputs means both have to be mapped by hand.
+        graph = MERGE_TRACKS_FILTER
+        if settings.audio_layout is AudioLayout.FORCE_MONO:
+            graph += ",pan=mono|c0=0.5*c0+0.5*c1"
+        args += ["-filter_complex", graph + "[aout]", "-map", "0:v:0", "-map", "[aout]"]
+    else:
+        filter_text = audio_filter(settings, source_channels=source_channels)
+        if filter_text:
+            args += ["-af", filter_text]
     args += ["-c:a", settings.audio_codec]
     if settings.audio_codec not in ("copy",):
         args += ["-b:a", settings.audio_bitrate]
@@ -541,11 +590,28 @@ def _hardware_encoder(settings: EncodingSettings) -> str:
     return encoder
 
 
-def _encode_args(settings: EncodingSettings) -> list[str]:
+#: Deinterlace only the frames the source marks as interlaced, so progressive
+#: recordings pass through untouched. Broadcast MXF (XDCAM, IMX) is usually
+#: 1080i or 576i, and encoding the fields as-is leaves combing on every
+#: movement -- WebM has no way to signal interlacing to the player.
+DEINTERLACE_FILTER = "bwdif=mode=send_frame:parity=auto:deint=interlaced"
+
+
+def _video_filters(settings: EncodingSettings) -> list[str]:
+    """The deinterlace, scale and rate filters every re-encode shares."""
+    filters = [DEINTERLACE_FILTER]
+    if settings.scale:
+        filters.append(f"scale={settings.scale}")
+    if settings.fps:
+        filters.append(f"fps={settings.fps}")
+    return filters
+
+
+def _encode_args(settings: EncodingSettings, *, merge_tracks: bool = False) -> list[str]:
     """Video/audio encoder flags for the configured container."""
     hardware = _hardware_encoder(settings)
     if hardware:
-        return _hardware_encode_args(settings, hardware)
+        return _hardware_encode_args(settings, hardware, merge_tracks=merge_tracks)
 
     args = ["-c:v", settings.video_codec]
 
@@ -554,7 +620,7 @@ def _encode_args(settings: EncodingSettings) -> list[str]:
         if settings.video_codec == "libsvtav1":
             # SVT-AV1 tunes speed with -preset and benefits from explicit
             # threading on many-core machines.
-            args += ["-preset", str(settings.av1_preset), "-pix_fmt", "yuv420p"]
+            args += ["-preset", str(settings.av1_preset)]
         elif settings.video_codec in ("libaom-av1", "librav1e"):
             args += ["-b:v", "0", "-cpu-used", str(settings.vp9_cpu_used), "-row-mt", "1"]
         elif settings.video_codec.startswith("libvpx"):
@@ -565,16 +631,13 @@ def _encode_args(settings: EncodingSettings) -> list[str]:
             args += ["-q:v", str(settings.crf)]
         else:
             args += ["-preset", settings.preset]
+        # Professional sources (MXF, ProRes, DNxHD) are often 4:2:2 or 10-bit,
+        # and every encoder here would keep that: VP9 profile 1, H.264 High
+        # 4:2:2. Browsers cannot play either, so always deliver 8-bit 4:2:0.
+        args += ["-pix_fmt", "yuv420p"]
+        args += ["-vf", ",".join(_video_filters(settings))]
 
-    filters = []
-    if settings.scale:
-        filters.append(f"scale={settings.scale}")
-    if settings.fps:
-        filters.append(f"fps={settings.fps}")
-    if filters:
-        args += ["-vf", ",".join(filters)]
-
-    args += _audio_args(settings)
+    args += _audio_args(settings, merge_tracks=merge_tracks)
 
     # Keep the moov atom at the front so MP4 clips scrub without a full download.
     if settings.output_format is OutputFormat.MP4:
@@ -582,27 +645,28 @@ def _encode_args(settings: EncodingSettings) -> list[str]:
     return args
 
 
-def _hardware_encode_args(settings: EncodingSettings, encoder: str) -> list[str]:
+def _hardware_encode_args(
+    settings: EncodingSettings, encoder: str, *, merge_tracks: bool = False,
+) -> list[str]:
     """Encoder flags for a GPU encoder.
 
     Hardware encoders take a quantiser rather than a CRF, and VAAPI needs
     the frames uploaded to the GPU first.
     """
     args: list[str] = []
-    filters = []
+    filters = _video_filters(settings)
     if encoder.endswith("_vaapi"):
         # Everything must be in a format the GPU accepts before upload.
-        filters.append("format=nv12")
-    if settings.scale:
-        filters.append(f"scale={settings.scale}")
-    if settings.fps:
-        filters.append(f"fps={settings.fps}")
-    if encoder.endswith("_vaapi"):
-        filters.append("hwupload")
-    if filters:
-        args += ["-vf", ",".join(filters)]
+        filters += ["format=nv12", "hwupload"]
+    args += ["-vf", ",".join(filters)]
 
     args += ["-c:v", encoder]
+    if encoder.endswith("_qsv"):
+        args += ["-pix_fmt", "nv12"]
+    elif not encoder.endswith("_vaapi"):
+        # As for the CPU encoders: a 4:2:2 source would otherwise pick a
+        # 4:2:2 or 4:4:4 profile, which most GPUs and browsers reject.
+        args += ["-pix_fmt", "yuv420p"]
     quality = str(settings.hardware_quality)
     if encoder.endswith("_vaapi"):
         args += ["-qp", quality]
@@ -615,7 +679,7 @@ def _hardware_encode_args(settings: EncodingSettings, encoder: str) -> list[str]
     elif encoder.endswith("_videotoolbox"):
         args += ["-q:v", quality]
 
-    args += _audio_args(settings)
+    args += _audio_args(settings, merge_tracks=merge_tracks)
     if settings.output_format is OutputFormat.MP4:
         args += ["-movflags", "+faststart"]
     return args
@@ -881,6 +945,7 @@ def build_convert_command(
     ffmpeg_path: str = "",
     pass_number: int = 0,
     passlog_prefix: str = "",
+    merge_tracks: bool | None = None,
 ) -> list[str]:
     """Transcode a whole file into another container.
 
@@ -888,6 +953,8 @@ def build_convert_command(
     MP4 quickly for review, then the approved ones are converted to WebM for
     Commons. ``pass_number`` of 1 or 2 drives VP9 two-pass encoding.
     """
+    if merge_tracks is None:
+        merge_tracks = has_paired_mono_tracks(source)
     exe = find_executable("ffmpeg", ffmpeg_path)
     command = [exe, "-hide_banner", "-nostdin"]
     command.append("-y" if settings.overwrite else "-n")
@@ -895,7 +962,8 @@ def build_convert_command(
     command += ["-i", str(source)]
 
     if pass_number in (1, 2):
-        command += _encode_args(settings)
+        # The first pass discards audio, so there is nothing to merge.
+        command += _encode_args(settings, merge_tracks=merge_tracks and pass_number == 2)
         command += ["-pass", str(pass_number), "-passlogfile",
                     passlog_prefix or str(Path(output).with_suffix(""))]
         if pass_number == 1:
@@ -905,7 +973,7 @@ def build_convert_command(
             command.append(os.devnull)
             return command
     else:
-        command += _encode_args(settings)
+        command += _encode_args(settings, merge_tracks=merge_tracks)
 
     if settings.threads:
         command += ["-threads", str(settings.threads)]
@@ -935,8 +1003,11 @@ def convert_file(
 
     # Two-pass is wired up for the libvpx encoders; AV1/x264 use CRF instead.
     two_pass = settings.vp9_two_pass and settings.video_codec.startswith("libvpx")
+    merge_tracks = has_paired_mono_tracks(source)
     if not two_pass:
-        command = build_convert_command(source, output, settings, ffmpeg_path=ffmpeg_path)
+        command = build_convert_command(
+            source, output, settings, ffmpeg_path=ffmpeg_path, merge_tracks=merge_tracks,
+        )
         return run_command(
             command, duration, on_progress=on_progress,
             on_log=on_log, should_cancel=should_cancel,
@@ -953,6 +1024,7 @@ def convert_file(
             build_convert_command(
                 source, output, settings, ffmpeg_path=ffmpeg_path,
                 pass_number=pass_number, passlog_prefix=prefix,
+                merge_tracks=merge_tracks,
             ),
             duration, on_progress=scaled, on_log=on_log, should_cancel=should_cancel,
         )

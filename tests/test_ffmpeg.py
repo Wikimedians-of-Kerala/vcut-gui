@@ -423,3 +423,69 @@ def test_the_codec_a_hardware_encoder_makes_is_read_from_its_name():
     assert hardware_codec("hevc_qsv") == "hevc"
     assert hardware_codec("vp9_vaapi") == "vp9"
     assert hardware_codec("something_else") == ""
+
+
+# -- professional sources (MXF) ------------------------------------------------
+
+
+@pytest.mark.parametrize("fmt", list(OutputFormat))
+def test_every_encode_delivers_8_bit_420(fmt):
+    # A 4:2:2 MXF otherwise becomes VP9 profile 1 or H.264 High 4:2:2,
+    # neither of which a browser will play.
+    command = build_command("in.mxf", "out", 0.0, 10.0,
+                            EncodingSettings().with_format(fmt), merge_tracks=False)
+    assert command[command.index("-pix_fmt") + 1] == "yuv420p"
+
+
+def test_every_encode_deinterlaces_only_what_is_interlaced():
+    from vcut.ffmpeg import DEINTERLACE_FILTER
+
+    settings = EncodingSettings().with_format(OutputFormat.WEBM_VP9)
+    settings.scale = "1280:-2"
+    command = build_command("in.mxf", "out.webm", 0.0, 10.0, settings, merge_tracks=False)
+    filters = command[command.index("-vf") + 1].split(",")
+    # Deinterlacing comes first: scaling fields apart would smear them.
+    assert filters[0] == DEINTERLACE_FILTER
+    assert "deint=interlaced" in DEINTERLACE_FILTER
+
+
+def test_two_mono_tracks_are_merged_into_stereo():
+    settings = EncodingSettings().with_format(OutputFormat.WEBM_AV1)
+    command = build_command("in.mxf", "out.webm", 0.0, 10.0, settings, merge_tracks=True)
+    graph = command[command.index("-filter_complex") + 1]
+    assert graph.startswith("[0:a:0][0:a:1]amerge=inputs=2")
+    assert ["-map", "[aout]"] == command[command.index("[aout]") - 1:command.index("[aout]") + 1]
+    assert "0:v:0" in command
+    assert "-af" not in command
+
+
+def test_a_mono_downmix_still_applies_after_merging():
+    from vcut.ffmpeg import AudioLayout
+
+    settings = EncodingSettings(audio_layout=AudioLayout.FORCE_MONO).with_format(
+        OutputFormat.WEBM_VP9)
+    command = build_command("in.mxf", "out.webm", 0.0, 10.0, settings, merge_tracks=True)
+    assert "pan=mono" in command[command.index("-filter_complex") + 1]
+
+
+def test_a_copied_cut_keeps_every_track_for_the_later_merge():
+    settings = EncodingSettings(cut_mode=CutMode.COPY)
+    command = build_command("in.mxf", "out.mp4", 0.0, 10.0, settings, merge_tracks=True)
+    assert "-filter_complex" not in command
+    assert command[command.index("-map", command.index("-map") + 1) + 1] == "0:a"
+
+
+def test_the_first_pass_has_no_audio_to_merge():
+    settings = EncodingSettings().with_format(OutputFormat.WEBM_VP9)
+    first = build_convert_command("in.mp4", "out.webm", settings,
+                                  pass_number=1, merge_tracks=True)
+    second = build_convert_command("in.mp4", "out.webm", settings,
+                                   pass_number=2, merge_tracks=True)
+    assert "-filter_complex" not in first
+    assert "-filter_complex" in second
+
+
+def test_a_missing_source_is_not_treated_as_paired_mono(tmp_path):
+    from vcut.ffmpeg import has_paired_mono_tracks
+
+    assert has_paired_mono_tracks(tmp_path / "absent.mxf") is False
