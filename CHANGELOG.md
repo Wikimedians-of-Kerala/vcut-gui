@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.8.0 — 2026-10-31
 
 **MXF recordings convert straight to WebM.** Broadcast and camera MXF
 (XDCAM, IMX, AVC-Intra) can be chosen as the source and cut directly to
